@@ -88,7 +88,7 @@ only `11509`/`120100` etc.; embedded copies are not affected by that, the standa
 ### Full addon
 | Command | Does |
 |---|---|
-| `/sawit` (old aliases `/guildatlas`, `/gatlas`) `status` | version, roster size, library availability, sharing state |
+| `/sawit` (old aliases `/guildatlas`, `/gatlas`) `status` | version, guild, roster size, guild secret and check code, unreadable-message counts, TomTom, sharing state |
 | `/sawit help` | lists all commands |
 | `/sawit secret` | window to enter, generate or remove the guild secret; shows the check code. `/sawit secret clear` removes it |
 | `/sawit share [on\|off]`, `pause` | location sharing is **opt-in and off by default** |

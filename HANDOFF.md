@@ -78,7 +78,7 @@ by that note; the in-game limits (message size, throttle, lockdown timing) still
   `[Category: Title] <WoW map pin link>` in the chat box; click posts it to guild. The link is built to match
   `C_Map.GetUserWaypointHyperlink()` exactly (no pin placed): per Wowpedia the server rejects map pin links whose colour or
   text were changed, so the title cannot go inside the link. Unverified in game.
-- **Notes toggle button on the world map** (`POIMap:CreateMapButton`): 32x32 AZB icon, top-right of the canvas at x -40, just
+- **Notes toggle button on the world map** (`POIMap:SetupWorldMap`, which also adds the Shift+right-click handler): 32x32 AZB icon, top-right of the canvas at x -40, just
   left of Blizzard's tracking-options/map-pin column (x -4). Toggles `profile.poi.showWorldMap` (also `/sawit map`); greyed out
   when hidden. Minimap note pins are separate (`/sawit minimap`).
 - **Shift+right-click on the world map** opens the same window at the clicked spot (`NoteDialog:OpenAt`). Hooked via

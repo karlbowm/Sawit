@@ -73,12 +73,15 @@ Test-harness quirks:
 - **Addon-message security:** every message on both prefixes is sealed. Never add a path that accepts plaintext, and
   check the seal (`Crypto.Open`) before decompressing or deserializing. Rate limits run before any crypto work. The tag
   binds kind (`"D"`/`"P"`) and the sender name without realm (`short()` in Comm.lua).
-- **Note permissions:** author or officer (`POI:MayWrite` on receive, `POI:CanModify` for local UI).
+- **Note permissions:** author or officer (`mayWrite` inside POI:Apply on receive, `POI:CanModify` for the local UI).
 - **UI windows:** build them with `GA.CreateWindow` / `GA.CreateButton` (Core/UI.lua: strata `FULLSCREEN_DIALOG` above
   the world map, draggable, Escape via `UISpecialFrames`). **No StaticPopup** (it sits below the map) and no
   UIDropDownMenu/Menu API (hand-built lists instead).
-- **Guard uncertain APIs** with fallbacks: `C_*` namespaced first, then old globals (e.g. `ChatFrameUtil.InsertLink` →
-  `ChatEdit_InsertLink`). The client is Mainline; Classic-only globals can't be assumed.
+- **API guards, only where they earn their place:** call APIs confirmed in `NOTES-client-research.md` directly (no
+  `C_Map and C_Map.X and ...` chains). Keep a fallback only where two API generations exist (e.g.
+  `ChatFrameUtil.InsertLink` → `ChatEdit_InsertLink`), and use `pcall` where a call can legitimately fail (placing a
+  map pin on a map that refuses them). Embedded libraries are required (`LibStub(name)`), never checked for nil.
+  The client is Mainline; Classic-only globals can't be assumed.
 - **Chat map-pin links** must stay byte-identical to `C_Map.GetUserWaypointHyperlink()`; only map and coordinates may
   differ, or the server drops the message. Custom text goes outside the link.
 - **Code style:** match the surrounding code. File header block comment explaining the *why*, section rulers
@@ -93,7 +96,7 @@ Dependencies point downwards; nothing in Core depends on a module at load time.
 Core (state, guild secret, roster, /sawit)   Crypto (pure)   UI (window builders)
   └─ Comm (sealed transport, two prefixes)
        ├─ POI (note data, sync, note commands) ──calls──> POIMap setters (filter/map/minimap commands)
-       │    └─ POIMap (pins, pin actions, map button)   NoteDialog   DeleteDialog
+       │    └─ POIMap (pins, pin actions, map button) ──opens──> NoteDialog (Shift+right-click), DeleteDialog (right-click)
        └─ Positions (location packets, dots) ──calls──> POIMap.WaypointTo (dot click)
 SecretDialog -> Core secret functions          MinimapButton -> Positions, POI, NoteDialog
 ```
