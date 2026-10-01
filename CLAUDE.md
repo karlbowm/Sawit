@@ -31,6 +31,7 @@ Core/Core.lua            addon object GA (= ns.addon = _G.SawIt), AceDB "SawItDB
                          guild secret storage, roster cache, player position, /sawit (+ aliases /guildatlas, /gatlas)
 Core/Crypto.lua          PBKDF2, Seal/Open (encrypt + 80-bit tag), nonces, RandomSecret on top of LibHash's SHA-256/HMAC
 Core/Comm.lua            prefixes GAtlasD (data) and GAtlasP (positions); seal/open, compression, rate limits, handlers
+Core/UI.lua              GA.CreateWindow / GA.CreateButton: the look and behaviour every SawIt window shares
 Modules/POI.lua          note records, validation, permissions, sync (hello/digest/request/records), note subcommands
 Modules/POIMap.lua       note pins (HBD-Pins), tooltips, clicks, chat link, waypoints, filters, world-map button + click hook
 Modules/Positions.lua    14-byte position packet, send policy, expiry, round class-colored dots
@@ -73,8 +74,8 @@ Test-harness quirks:
   check the seal (`Crypto.Open`) before decompressing or deserializing. Rate limits run before any crypto work. The tag
   binds kind (`"D"`/`"P"`) and the sender name without realm (`short()` in Comm.lua).
 - **Note permissions:** author or officer (`POI:MayWrite` on receive, `POI:CanModify` for local UI).
-- **UI windows:** plain frames + `InputBoxTemplate`/`UIPanelButtonTemplate`, strata `FULLSCREEN_DIALOG` (above the world
-  map), named frame in `UISpecialFrames` for Escape. **No StaticPopup** (it sits below the map) and no
+- **UI windows:** build them with `GA.CreateWindow` / `GA.CreateButton` (Core/UI.lua: strata `FULLSCREEN_DIALOG` above
+  the world map, draggable, Escape via `UISpecialFrames`). **No StaticPopup** (it sits below the map) and no
   UIDropDownMenu/Menu API (hand-built lists instead).
 - **Guard uncertain APIs** with fallbacks: `C_*` namespaced first, then old globals (e.g. `ChatFrameUtil.InsertLink` →
   `ChatEdit_InsertLink`). The client is Mainline; Classic-only globals can't be assumed.

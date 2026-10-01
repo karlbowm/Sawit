@@ -316,6 +316,7 @@ SawIt/
   Core/Core.lua        addon object, AceDB, roster cache, position helper, /sawit
   Core/Crypto.lua      PBKDF2, seal/open with the guild secret, built on LibHash's SHA-256/HMAC
   Core/Comm.lua        prefixes, sealed envelope, compression flag, rate limit, handler registry
+  Core/UI.lua          shared window and button builders for the dialogs
   Modules/POI.lua      records, validation, permissions, sync, note commands of /sawit
   Modules/POIMap.lua   note pins on world map + minimap (HBD-Pins), tooltips, click actions, category filters
   Modules/Positions.lua live positions: packet, send policy, expiry, HBD pins

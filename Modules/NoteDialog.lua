@@ -45,29 +45,7 @@ end
 
 -- Out: the window frame (built once, on first open)
 local function build()
-    local f = CreateFrame("Frame", FRAME_NAME, UIParent)
-    f:SetSize(320, 196)
-    f:SetPoint("CENTER", 0, 120)
-    f:SetFrameStrata("FULLSCREEN_DIALOG")   -- above the world map, which can be HIGH or FULLSCREEN
-    f:EnableMouse(true)
-    f:SetMovable(true)
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", f.StopMovingOrSizing)
-    f:Hide()
-    tinsert(UISpecialFrames, FRAME_NAME)   -- Escape closes it
-
-    local border = f:CreateTexture(nil, "BACKGROUND", nil, 0)
-    border:SetAllPoints()
-    border:SetColorTexture(0.5, 0.5, 0.5, 1)
-    local bg = f:CreateTexture(nil, "BACKGROUND", nil, 1)
-    bg:SetPoint("TOPLEFT", 1, -1)
-    bg:SetPoint("BOTTOMRIGHT", -1, 1)
-    bg:SetColorTexture(0.05, 0.05, 0.05, 0.92)
-
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("TOPLEFT", 12, -10)
-    title:SetText("Add guild note")
+    local f = GA.CreateWindow(FRAME_NAME, 320, 196, "Add guild note")
 
     f.where = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     f.where:SetPoint("TOPRIGHT", -12, -12)
@@ -76,12 +54,10 @@ local function build()
     catLabel:SetPoint("TOPLEFT", 12, -38)
     catLabel:SetText("Category")
 
-    f.catButton = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    f.catButton:SetSize(200, 22)
-    f.catButton:SetPoint("TOPRIGHT", -12, -34)
-    f.catButton:SetScript("OnClick", function()
+    f.catButton = GA.CreateButton(f, "", 200, function()
         if f.catList:IsShown() then f.catList:Hide() else f.catList:Show() end
     end)
+    f.catButton:SetPoint("TOPRIGHT", -12, -34)
 
     -- category list, drawn over the rest of the window below the category button
     local list = CreateFrame("Frame", nil, f)
@@ -128,18 +104,10 @@ local function build()
     f.title:SetScript("OnTabPressed", function() f.edit:SetFocus() end)
     f.edit:SetScript("OnTabPressed", function() f.title:SetFocus() end)
 
-    local add = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    add:SetSize(100, 22)
-    add:SetPoint("BOTTOMRIGHT", -12, 12)
-    add:SetText("Add")
-    add:SetScript("OnClick", submit)
-    f.addButton = add
-
-    local cancel = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    cancel:SetSize(100, 22)
-    cancel:SetPoint("RIGHT", add, "LEFT", -8, 0)
-    cancel:SetText("Cancel")
-    cancel:SetScript("OnClick", function() f:Hide() end)
+    f.addButton = GA.CreateButton(f, "Add", 100, submit)
+    f.addButton:SetPoint("BOTTOMRIGHT", -12, 12)
+    local cancel = GA.CreateButton(f, "Cancel", 100, function() f:Hide() end)
+    cancel:SetPoint("RIGHT", f.addButton, "LEFT", -8, 0)
 
     f:SetScript("OnHide", function() f.catList:Hide(); f.title:ClearFocus(); f.edit:ClearFocus() end)
     return f

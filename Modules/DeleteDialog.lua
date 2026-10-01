@@ -6,7 +6,7 @@ SawIt - DeleteDialog: small window to delete notes, opened by right-clicking a n
 The window is the confirmation: right-click only opens it, a note goes only when its Delete button is pressed.
 One row per note, so a pin holding several notes can have just one of them removed. The list holds note ids, not
 records, so a note changed or deleted by sync while the window is open is handled by POI:Remove's own checks.
-Plain frames and UIPanelButtonTemplate only, like NoteDialog; no StaticPopup, which sits below the world map.
+Built with GA.CreateWindow (Core/UI.lua), like the other windows.
 ]]
 local _, ns = ...
 local GA = ns.addon
@@ -35,7 +35,7 @@ local function layout()
     for i, row in ipairs(rows) do
         if listed[i] then row.text:SetText(rowText(listed[i])); row:Show() else row:Hide() end
     end
-    frame.title:SetText(#listed == 1 and "Delete this note?" or "Delete which note?")
+    frame.heading:SetText(#listed == 1 and "Delete this note?" or "Delete which note?")
     frame:SetHeight(34 + #listed * ROW_H + 44)
 end
 
@@ -59,46 +59,17 @@ local function getRow(i)
     row.text:SetPoint("LEFT", 0, 0)
     row.text:SetPoint("RIGHT", -88, 0)
     row.text:SetJustifyH("LEFT")
-    row.button = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-    row.button:SetSize(80, 22)
+    row.button = GA.CreateButton(row, "Delete", 80, function() deleteRow(i) end)
     row.button:SetPoint("RIGHT", 0, 0)
-    row.button:SetText("Delete")
-    row.button:SetScript("OnClick", function() deleteRow(i) end)
     rows[i] = row
     return row
 end
 
 -- Out: the window frame (built once, on first open)
 local function build()
-    local f = CreateFrame("Frame", FRAME_NAME, UIParent)
-    f:SetSize(WIDTH, 120)
-    f:SetPoint("CENTER", 0, 120)
-    f:SetFrameStrata("FULLSCREEN_DIALOG")   -- above the world map, like NoteDialog
-    f:EnableMouse(true)
-    f:SetMovable(true)
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", f.StopMovingOrSizing)
-    f:Hide()
-    tinsert(UISpecialFrames, FRAME_NAME)   -- Escape closes it
-
-    local border = f:CreateTexture(nil, "BACKGROUND", nil, 0)
-    border:SetAllPoints()
-    border:SetColorTexture(0.5, 0.5, 0.5, 1)
-    local bg = f:CreateTexture(nil, "BACKGROUND", nil, 1)
-    bg:SetPoint("TOPLEFT", 1, -1)
-    bg:SetPoint("BOTTOMRIGHT", -1, 1)
-    bg:SetColorTexture(0.05, 0.05, 0.05, 0.92)
-
-    f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    f.title:SetPoint("TOPLEFT", 12, -10)
-
-    local cancel = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    cancel:SetSize(100, 22)
-    cancel:SetPoint("BOTTOMRIGHT", -12, 12)
-    cancel:SetText("Cancel")
-    cancel:SetScript("OnClick", function() f:Hide() end)
-    f.cancelButton = cancel
+    local f = GA.CreateWindow(FRAME_NAME, WIDTH, 120, "")   -- heading and height are set by layout()
+    f.cancelButton = GA.CreateButton(f, "Cancel", 100, function() f:Hide() end)
+    f.cancelButton:SetPoint("BOTTOMRIGHT", -12, 12)
     return f
 end
 

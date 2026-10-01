@@ -23,6 +23,7 @@ embeds.xml
 Core\Core.lua
 Core\Crypto.lua
 Core\Comm.lua
+Core\UI.lua
 Modules\POI.lua
 Modules\POIMap.lua
 Modules\Positions.lua

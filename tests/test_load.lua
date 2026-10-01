@@ -535,12 +535,12 @@ local mixed = pinOf(fromMap.id)
 mixed.scripts.OnClick(mixed, "RightButton")
 local dd = del.GetFrame()
 check(dd and dd:IsShown() and shownRows() == 1 and del._listed[1].id == fromMap.id, "right-click on a shared pin lists only your note")
-check(dd.title:GetText() == "Delete this note?", "one note: 'Delete this note?'")
+check(dd.heading:GetText() == "Delete this note?", "one note: 'Delete this note?'")
 dd.cancelButton:Click()
 check(not dd:IsShown() and GA.POI:Get(fromMap.id) and not GA.POI:Get(fromMap.id).deleted, "Cancel deletes nothing")
 local pair = pinOf(r.id)
 pair.scripts.OnClick(pair, "RightButton")
-check(dd:IsShown() and shownRows() == 2 and dd.title:GetText() == "Delete which note?", "pin with two of your notes lists both")
+check(dd:IsShown() and shownRows() == 2 and dd.heading:GetText() == "Delete which note?", "pin with two of your notes lists both")
 local firstId, second = del._listed[1].id, del._listed[2]
 GA.POI:Get(second.id).deleted = true   -- as if a sync deleted it while the window is open
 del._rows[1].button:Click()
@@ -590,6 +590,9 @@ GetGuildInfo = function() return "AZB" end
 local after = 0
 for _ in GA.POI:Iterate() do after = after + 1 end
 check(after == realNotes, "flag off again: the real guild's notes are untouched")
+local escape = {}
+for _, n in ipairs(UISpecialFrames) do escape[n] = true end
+check(escape.SawItNoteDialog and escape.SawItDeleteDialog and escape.SawItSecretDialog, "all three windows close with Escape")
 check(#caught == 0, "no errors reported to the error handler")
 
 print(fails == 0 and "\nALL PASSED" or ("\n" .. fails .. " FAILED"))
