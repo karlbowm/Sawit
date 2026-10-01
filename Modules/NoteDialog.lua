@@ -1,12 +1,11 @@
 --[[
-SawIt - NoteDialog: small window to add a POI.
+SawIt - NoteDialog: the window to add a note (category, title, details).
   Open()             at the player's position (minimap button left-click)
   OpenAt(map, x, y)  at a clicked world-map spot (Shift+right-click on the world map, hooked in POIMap.lua)
 
 The position is captured when the window opens, so the note lands where you were (or clicked) at that moment.
-Category picker is a hand-built list, not UIDropDownMenu / the 11.x Menu API: which of those exists on this
-client is unverified, and plain Buttons work on both. Only InputBoxTemplate and UIPanelButtonTemplate are used
-(present on every client since Vanilla).
+The category picker is a hand-built list of buttons rather than a dropdown (UIDropDownMenu or the Menu API): fewer
+moving parts, and it works the same on every client. Only InputBoxTemplate and UIPanelButtonTemplate are used.
 ]]
 local _, ns = ...
 local GA = ns.addon
@@ -18,19 +17,22 @@ GA.NoteDialog = Dialog
 local FRAME_NAME = "SawItNoteDialog"
 local frame
 local pos           -- { map, x, y } captured on open
-local cat = "other"
+local cat = "other" -- selected category; kept between notes
 
+-- In: key  category.  Out: "<icon> Label" in the category's colour
 local function categoryText(key)
     local c = POI.CATEGORIES[key]
     return ("|T%s:14|t |cff%s%s|r"):format(c.icon, c.color, c.label)
 end
 
+-- Selects a category and closes the list.
 local function setCategory(key)
     cat = key
     frame.catButton:SetText(categoryText(key))
     frame.catList:Hide()
 end
 
+-- Add button / Enter: creates the note; on success closes the window, otherwise keeps it open (e.g. no title).
 local function submit()
     local id, why = POI:Create(frame.edit:GetText(), cat, pos.map, pos.x, pos.y, frame.title:GetText())
     if not id then
@@ -41,6 +43,7 @@ local function submit()
     frame:Hide()
 end
 
+-- Out: the window frame (built once, on first open)
 local function build()
     local f = CreateFrame("Frame", FRAME_NAME, UIParent)
     f:SetSize(320, 196)
@@ -144,19 +147,21 @@ end
 
 -- Notes only make sense on zone-level maps (zone, dungeon, micro, orphan); not on the world or a continent,
 -- where the pin would sit on that overview map only.
+-- In: mapID.  Out: true for zone-level maps
 local function isZoneMap(mapID)
-    local info = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(mapID)
-    local types = Enum and Enum.UIMapType
-    return info ~= nil and types ~= nil and info.mapType ~= nil and info.mapType >= types.Zone
+    local info = C_Map.GetMapInfo(mapID)
+    return info ~= nil and info.mapType ~= nil and info.mapType >= Enum.UIMapType.Zone
 end
-Dialog.IsZoneMap = isZoneMap
 
+-- Opens the window at the player's position (or says why it can't).
 function Dialog:Open()
     local mapID, x, y = GA:GetPlayerPosition()
     if not mapID then return GA:Print("No position available here (" .. tostring(x) .. ").") end
     self:OpenAt(mapID, x, y)
 end
 
+-- Opens the window for a note at a spot; refuses outside a guild (test mode counts as one) and above zone level.
+-- In: mapID, x, y (0..1)
 function Dialog:OpenAt(mapID, x, y)
     if not GA:InGuild() then
         return GA:Print("You need to be in a guild to add notes (for testing: set GA.TEST_MODE = true in Core/Core.lua and /reload).")
@@ -173,6 +178,7 @@ function Dialog:OpenAt(mapID, x, y)
     frame.title:SetFocus()
 end
 
+-- Minimap button: closes the window if open, otherwise opens it at the player's position.
 function Dialog:Toggle()
     if frame and frame:IsShown() then frame:Hide() else self:Open() end
 end
