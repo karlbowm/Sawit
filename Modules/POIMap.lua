@@ -201,7 +201,6 @@ end
 function POIMap:Redraw()
     self.pending = false
     local pins = GA.HBDPins
-    if not pins then return end
     pins:RemoveAllWorldMapIcons(REF)
     pins:RemoveAllMinimapIcons(REF)
     for i = #used, 1, -1 do
@@ -314,5 +313,4 @@ function POIMap:OnEnable()
     self:RegisterMessage("GUILDATLAS_POI_CHANGED", "Refresh")
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "Refresh")   -- the guild (and so its notes) is only known after login
     self:RegisterEvent("PLAYER_GUILD_UPDATE", "Refresh")
-    if not GA.HBDPins then GA:Print("HereBeDragons-Pins missing: notes will not be drawn on the map.") end
 end

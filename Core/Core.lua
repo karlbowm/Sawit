@@ -25,7 +25,7 @@ GA.VERSION = "0.1.0"
 GA.TEST_MODE = true
 GA.TEST_GUILD_NAME = "AZB Test"
 
-GA.HBDPins = LibStub("HereBeDragons-Pins-2.0", true)
+GA.HBDPins = LibStub("HereBeDragons-Pins-2.0")   -- embedded (embeds.xml); draws note pins and guildmate dots
 
 local MIN_SECRET = 8   -- characters
 
@@ -315,7 +315,7 @@ local function printStatus(self)
         self:Print(("Unreadable guild messages: %d wrong secret, %d unencrypted (old SawIt/GuildAtlas), %d while no secret was set")
             :format(st.unreadable, st.plaintext, st.noKey))
     end
-    self:Print(("Map pins library=%s  TomTom=%s"):format(tostring(self.HBDPins ~= nil), tostring(self.IsAddOnLoaded("TomTom"))))
+    self:Print("TomTom: " .. (self.IsAddOnLoaded("TomTom") and "installed (Ctrl-click waypoints)" or "not installed (Ctrl-click places WoW's map pin)"))
     self.Positions:PrintStatus()
 end
 

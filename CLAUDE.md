@@ -26,7 +26,8 @@ Keep README, HANDOFF and TODO in sync with code changes. Existing docs use dated
 
 ```
 embeds.xml               libraries: Ace3 (Addon, Event, Console, DB, Serializer, Comm+ChatThrottleLib), LDB, LibDBIcon,
-                         HereBeDragons-2.0 + Pins, LibDeflate, LibHash-1.0 (all vendored unmodified)
+                         HereBeDragons-2.0 + Pins, LibDeflate, LibHash-1.0 (all vendored unmodified; all required:
+                         loaded with LibStub(name), no "is it there?" checks in the code)
 Core/Core.lua            addon object GA (= ns.addon = _G.SawIt), AceDB "SawItDB", TEST_MODE flag, guild helpers,
                          guild secret storage, roster cache, player position, /sawit (+ aliases /guildatlas, /gatlas)
 Core/Crypto.lua          PBKDF2, Seal/Open (encrypt + 80-bit tag), nonces, RandomSecret on top of LibHash's SHA-256/HMAC

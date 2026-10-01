@@ -144,7 +144,6 @@ end
 -- In: name, e  the player's entry
 local function draw(name, e)
     local pins = GA.HBDPins
-    if not pins then return end
     local r = GA.roster[name]
     local c = r and RAID_CLASS_COLORS[r.class] or WHITE
     for _, f in ipairs({ e.world, e.mini }) do
@@ -177,10 +176,8 @@ end
 function Pos:Drop(name)
     local e = players[name]
     if not e then return end
-    if GA.HBDPins then
-        GA.HBDPins:RemoveWorldMapIcon(REF, e.world)
-        GA.HBDPins:RemoveMinimapIcon(REF, e.mini)
-    end
+    GA.HBDPins:RemoveWorldMapIcon(REF, e.world)
+    GA.HBDPins:RemoveMinimapIcon(REF, e.mini)
     e.world:Hide()
     e.mini:Hide()
     pool[#pool + 1] = e.world
@@ -228,5 +225,4 @@ function Pos:OnEnable()
     self:RegisterMessage("GUILDATLAS_ROSTER_UPDATED", "RefreshAllIcons")   -- class colours arrive with the roster
     C_Timer.NewTicker(5, function() self:Expire() end)
     C_Timer.After(10, function() self:Tick() end)
-    if not GA.HBDPins then GA:Print("HereBeDragons-Pins missing: positions will not be drawn.") end
 end
