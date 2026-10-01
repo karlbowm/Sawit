@@ -1,42 +1,43 @@
 --[[
-GuildAtlas - POI module: records, validation, permissions, sync, and the note part of /sawit (Core forwards to it).
-Rendering lives in POIMap.lua (own HereBeDragons pins) so this file has no UI dependency.
+SawIt - POI: guild notes ("points of interest"). Records, validation, permissions, sync, and the note commands of
+/sawit (Core forwards every command it doesn't handle itself). Drawing is in POIMap.lua, so this file has no UI.
 
-Record (in memory and SavedVariables, GuildAtlasDB.global.guilds[<guild>-<realm>].pois[id]):
-  id        string  [%w]{1,24}, base36(time)..3 random chars, unique enough for a 50-person guild
-  rev       number  version counter. New rev = max(time(), old.rev + 1). Higher rev wins.
-            ties (same rev) break on updatedBy (string compare) so every client converges.
-  author    string  creator, immutable
-  updatedBy string  who wrote this revision (author or an officer)
+Record (in memory and in SawItDB.global.guilds["Guild-Realm"].pois[id]):
+  id        string  [%w]{1,24}: base36(time) .. 3 random base36 chars; unique enough for a 50-person guild
+  rev       number  version. A new revision gets max(time(), old.rev + 1). The higher rev wins; equal revs are decided
+                    by updatedBy (string compare), so every client ends up with the same record.
+  author    string  creator, never changes
+  updatedBy string  who wrote this revision (the author or an officer)
   mapID     number  uiMapID
-  x, y      number  0..0.9999 (4 decimal places)
-  title     string  <= 40 bytes, same cleaning plus '[' ']' stripped (it is shown as "[Category: Title]" in chat).
-            "" on notes made before titles existed; displays fall back to the text (POI.DisplayTitle).
-  text      string  <= 120 bytes, control chars and '|' stripped. Optional details when a title is set.
-  cat       string  key of POI.CATEGORIES
-  deleted   bool    tombstone; text is emptied. Tombstones sync like any record.
+  x, y      number  0..0.9999 (4 decimals)
+  title     string  <= 40 bytes; control chars, '|', '[' and ']' removed (it is shown as "[Category: Title]" in chat).
+                    "" (nil in old saved data) when the note has none: DisplayTitle() then shows the text.
+  text      string  <= 120 bytes, control chars and '|' removed. The details, when there is a title.
+  cat       string  key of POI.CATEGORIES (unknown keys become "other")
+  deleted   true|nil  tombstone: text and title emptied. Synced like any record, purged after 180 days.
 
-Wire form of a record (array, positional, no keys):
-  { id, rev, author, updatedBy, mapID, xq, yq, text, cat, del, title }   xq,yq = 0..9999 ints, del = 0|1
-  title is last so clients without it (standalone GuildAtlas) still accept the record; they drop it when relaying.
+Wire form (positional array): { id, rev, author, updatedBy, mapID, xq, yq, text, cat, del, title }
+  xq, yq = 0..9999 integers, del = 0|1. title is last, so clients that only know 10 fields still accept the record.
 
-Message types (all carried by Comm, envelope (PROTO, type, payload)):
-  U  live update            payload = packed record             GUILD,   ALERT
-  H  hello (after login)    payload = { count, checksum }       GUILD,   NORMAL
-  G  digest                 payload = { id1, rev1, id2, rev2 }  WHISPER, NORMAL   (answer to H)
-  Q  request records        payload = { id1, id2, ... }         WHISPER, NORMAL
-  R  records                payload = { packed, packed, ... }   WHISPER, NORMAL
+Messages (sent through Comm):
+  U  live update      payload = packed record                GUILD,   ALERT
+  H  hello (login)    payload = { count, checksum }          GUILD,   NORMAL
+  G  digest           payload = { id1, rev1, id2, rev2, .. } WHISPER, NORMAL   (answer to H)
+  Q  request records  payload = { id1, id2, ... }            WHISPER, NORMAL
+  R  records          payload = { packed, packed, ... }      WHISPER, NORMAL
+Sync: after login (and when the guild secret is set) we send H. Every guildmate whose checksum differs whispers us a
+digest G; from it we request what is newer there (Q) and send what is newer here (R).
 ]]
-local ADDON, ns = ...
+local _, ns = ...
 local GA = ns.addon
 
-local POI = GA:NewModule("POI", "AceEvent-3.0", "AceConsole-3.0")
+local POI = GA:NewModule("POI", "AceEvent-3.0")
 GA.POI = POI
 
-local MAX_TEXT = 120
-local MAX_TITLE = 40
-local TOMBSTONE_TTL = 180 * 86400     -- known limitation: a peer that was offline longer can resurrect a note
-local MAX_FUTURE = 86400              -- reject revs more than a day ahead of our clock (clock-skew guard)
+local MAX_TEXT, MAX_TITLE = 120, 40
+POI.MAX_TITLE = MAX_TITLE
+local TOMBSTONE_TTL = 180 * 86400   -- known limit: a peer offline for longer can bring a deleted note back
+local MAX_FUTURE = 86400            -- revs more than a day ahead of our clock are rejected (clock-skew guard)
 local MAX_DIGEST_ENTRIES = 5000
 local RECORDS_PER_MSG = 6
 local IDS_PER_MSG = 40
@@ -53,9 +54,11 @@ POI.CATEGORIES = {
 POI.CATEGORY_ORDER = { "rare", "grind", "quest", "other" }
 
 ---------------------------------------------------------------------------
--- small helpers (pure: no WoW API, unit-testable)
+-- helpers (no WoW API, so the tests can use them)
 ---------------------------------------------------------------------------
 local B36 = "0123456789abcdefghijklmnopqrstuvwxyz"
+
+-- In: n  integer >= 0.  Out: n in base 36, e.g. "tm751s"
 local function b36(n)
     local s = ""
     repeat
@@ -66,56 +69,90 @@ local function b36(n)
     return s
 end
 
+-- Out: a new note id
 local function newID() return b36(time()) .. ("000" .. b36(math.random(0, 46655))):sub(-3) end
 
-local function clampQ(v) return math.max(0, math.min(9999, math.floor(v * 10000 + 0.5))) end
+-- In: v  coordinate 0..1.  Out: integer 0..9999, as sent on the wire
+local function quantize(v) return math.max(0, math.min(9999, math.floor(v * 10000 + 0.5))) end
 
+-- Makes text safe to store and show: control chars and '|' (WoW's escape character) become spaces, runs of spaces
+-- collapse, and it is cut to max bytes without leaving half a UTF-8 character.
+-- In:  s  anything (nil -> "");  max  bytes, default MAX_TEXT.  Out: string
 local function cleanText(s, max)
     max = max or MAX_TEXT
     s = tostring(s or ""):gsub("[%c|]", " "):gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")
-    if #s > max then
-        s = s:sub(1, max)
-        -- don't leave half of a multi-byte UTF-8 character at the end
-        local i = #s
-        while i > 0 and s:byte(i) >= 128 and s:byte(i) < 192 do i = i - 1 end
-        if i > 0 and s:byte(i) >= 192 then s = s:sub(1, i - 1) end
-    end
+    if #s <= max then return s end
+    s = s:sub(1, max)
+    -- the cut may fall inside a multi-byte character: drop back to before its first byte (this can also drop one
+    -- character that was complete, which is harmless)
+    local i = #s
+    while i > 0 and s:byte(i) >= 128 and s:byte(i) < 192 do i = i - 1 end
+    if i > 0 and s:byte(i) >= 192 then s = s:sub(1, i - 1) end
     return s
 end
-POI._cleanText = cleanText
 
+-- In: s  anything.  Out: cleaned title: like cleanText, also without '[' and ']', at most MAX_TITLE bytes
 local function cleanTitle(s) return cleanText(tostring(s or ""):gsub("[%[%]]", ""), MAX_TITLE) end
-POI.MAX_TITLE = MAX_TITLE
 
--- Title for display: the title, or for untitled (older) notes the start of the text.
+-- The title to show. A note without a title (older notes, or added with details only) shows the start of its text.
+-- In: rec.  Out: string
 function POI.DisplayTitle(rec)
     if rec.title and rec.title ~= "" then return rec.title end
-    return cleanTitle(rec.text or "")
+    return cleanTitle(rec.text)
 end
 
+-- The details to show below or after the title: the text, unless DisplayTitle already shows all of it.
+-- In: rec.  Out: string, "" when there is nothing more to show
+function POI.Details(rec)
+    if rec.title and rec.title ~= "" then return rec.text end
+    return POI.DisplayTitle(rec) == rec.text and "" or rec.text
+end
+
+-- In: id, rev.  Out: 32-bit hash of the pair, summed up by Checksum()
 local function hashEntry(id, rev)
     local h, s = 5381, id .. ":" .. rev
     for i = 1, #s do h = (h * 33 + s:byte(i)) % 4294967296 end
     return h
 end
 
--- true when a is a newer revision than b
+-- In: a, b  records with the same id.  Out: true when a is the newer revision
 local function isNewer(a, b)
     if a.rev ~= b.rev then return a.rev > b.rev end
     return a.updatedBy > b.updatedBy
 end
 
+-- "Title; details" -> "Title", "details". Without ';' everything is the title and details is nil, so
+-- "/sawit edit <id> <title>" keeps the existing details and "<title>;" clears them.
+local function splitTitle(s)
+    local title, text = s:match("^(.-)%s*;%s*(.*)$")
+    if title then return title, text end
+    return s, nil
+end
+POI._splitTitle = splitTitle   -- for tests
+
+-- "rare Mother Fang" -> "rare", "Mother Fang". When the first word isn't a category: nil, the whole string.
+local function splitCategory(s)
+    local first, rest = s:match("^(%S+)%s*(.-)$")
+    if first and POI.CATEGORIES[first:lower()] then return first:lower(), rest end
+    return nil, s
+end
+
 ---------------------------------------------------------------------------
--- store access
+-- store
 ---------------------------------------------------------------------------
+-- Out: the current guild's notes table { [id] = record } (tombstones included), or nil when not in a guild
 function POI:Store()
     local g = GA:GuildStore()
     return g and g.pois
 end
 
-function POI:Get(id) local s = self:Store(); return s and s[id] end
+-- In: id.  Out: the record (possibly a tombstone), or nil
+function POI:Get(id)
+    local s = self:Store()
+    return s and s[id]
+end
 
--- Iterates live (non-tombstoned) records.
+-- Iterates over the notes that aren't deleted:  for id, rec in POI:Iterate() do ... end
 function POI:Iterate()
     local s = self:Store() or {}
     local id, rec
@@ -127,26 +164,33 @@ function POI:Iterate()
     end
 end
 
+-- Out: count, checksum over every record's (id, rev), tombstones included. Equal on two clients = same notes.
 function POI:Checksum()
-    local s, count, sum = self:Store() or {}, 0, 0
-    for id, rec in pairs(s) do count = count + 1; sum = (sum + hashEntry(id, rec.rev)) % 4294967296 end
+    local count, sum = 0, 0
+    for id, rec in pairs(self:Store() or {}) do
+        count = count + 1
+        sum = (sum + hashEntry(id, rec.rev)) % 4294967296
+    end
     return count, sum
 end
 
 ---------------------------------------------------------------------------
--- pack / unpack / validate
+-- wire form
 ---------------------------------------------------------------------------
+-- In: r  record.  Out: its wire form
 local function pack(r)
-    return { r.id, r.rev, r.author, r.updatedBy, r.mapID, clampQ(r.x), clampQ(r.y), r.text, r.cat, r.deleted and 1 or 0, r.title or "" }
+    return { r.id, r.rev, r.author, r.updatedBy, r.mapID, quantize(r.x), quantize(r.y), r.text, r.cat,
+             r.deleted and 1 or 0, r.title or "" }
 end
-POI._pack = pack
+POI._pack = pack   -- for tests
 
 local function isName(s) return type(s) == "string" and #s >= 2 and #s <= 48 and not s:find("[%c|]") end
 
--- Returns a sanitised local-format record or nil, reason. Never trusts types or ranges.
-local function unpackRec(a)
+-- Checks and cleans a record in wire form. Trusts nothing: every type, range and text is checked.
+-- In: a  anything.  Out: the record, or nil, reason (the name of the bad field)
+local function unpackRecord(a)
     if type(a) ~= "table" then return nil, "not-table" end
-    local id, rev, author, updatedBy, mapID, xq, yq, text, cat, del, title = a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8], a[9], a[10], a[11]
+    local id, rev, author, updatedBy, mapID, xq, yq, text, cat, del, title = unpack(a, 1, 11)
     if type(id) ~= "string" or not id:match("^%w+$") or #id > 24 then return nil, "id" end
     if type(rev) ~= "number" or rev ~= math.floor(rev) or rev < 1 or rev > time() + MAX_FUTURE then return nil, "rev" end
     if not isName(author) or not isName(updatedBy) then return nil, "name" end
@@ -163,42 +207,41 @@ local function unpackRec(a)
         deleted = deleted or nil,
     }
 end
-POI._unpack = unpackRec
 
 ---------------------------------------------------------------------------
--- permissions + apply
+-- permissions and applying records
 ---------------------------------------------------------------------------
--- actor == rec.updatedBy (claimed). For live updates the caller has already checked actor == sender;
--- for relayed sync records the claim is only as trustworthy as the relaying peer (see README, "Trust").
-function POI:MayWrite(rec, existing)
-    local actor = rec.updatedBy
-    if existing then
-        if existing.author ~= rec.author then return false, "author-changed" end
-        return actor == existing.author or GA:IsOfficer(actor), "not-allowed"
-    end
-    return actor == rec.author or GA:IsOfficer(actor), "not-allowed"
+-- The write rule every client enforces: only the author or an officer may write a note, and the author never changes.
+-- rec.updatedBy is checked against the real sender for live updates (Apply); for relayed sync records it is only
+-- as trustworthy as the relaying peer (README, "Trust model").
+-- In: rec (new revision), existing (our current one, or nil).  Out: true, or false, reason
+local function mayWrite(rec, existing)
+    if existing and existing.author ~= rec.author then return false, "author-changed" end
+    if rec.updatedBy == rec.author or GA:IsOfficer(rec.updatedBy) then return true end
+    return false, "not-allowed"
 end
 
--- May the local player edit/delete this note? Same rule MayWrite applies on every receiving client.
+-- The same rule for the local UI: may we edit or delete this note?
+-- In: rec.  Out: true or false
 function POI:CanModify(rec)
     return rec ~= nil and not rec.deleted and (rec.author == GA.playerName or GA:IsOfficer(GA.playerName))
 end
 
--- sender: who delivered it. live: true when sender must also be the claimed updatedBy (U messages / local edits).
-function POI:Apply(packedOrRec, sender, live)
+-- Stores a record if it is valid, newer than ours and allowed, then sends GUILDATLAS_POI_CHANGED (the map redraws).
+-- In:  packed  wire form (from a message, or pack() of our own new revision)
+--      sender  who delivered it
+--      live    true for live updates and our own edits: the sender must be the record's updatedBy.
+--              false for relayed sync records (R), where the relaying peer isn't the writer.
+-- Out: true, or false, reason
+function POI:Apply(packed, sender, live)
     local store = self:Store()
     if not store then return false, "no-guild" end
-    local rec, why
-    if packedOrRec.id and not packedOrRec[1] then   -- already local format (own edits)
-        rec, why = unpackRec(pack(packedOrRec))
-    else
-        rec, why = unpackRec(packedOrRec)
-    end
+    local rec, why = unpackRecord(packed)
     if not rec then return false, why end
     if live and GA:Normalize(sender) ~= rec.updatedBy then return false, "sender-mismatch" end
     local existing = store[rec.id]
     if existing and not isNewer(rec, existing) then return false, "stale" end
-    local ok, reason = self:MayWrite(rec, existing)
+    local ok, reason = mayWrite(rec, existing)
     if not ok then return false, reason end
     store[rec.id] = rec
     self:SendMessage("GUILDATLAS_POI_CHANGED", rec.id)
@@ -206,83 +249,95 @@ function POI:Apply(packedOrRec, sender, live)
 end
 
 ---------------------------------------------------------------------------
--- local mutations (each applies locally, then broadcasts a live update)
+-- local changes: applied here first, then sent to the guild as a live update
 ---------------------------------------------------------------------------
-local function broadcast(rec)
-    local comm = GA.Comm
-    if comm then comm:Send("U", pack(rec), "GUILD", nil, "ALERT") end
+-- In: rec  our new revision.  Out: true, or false, reason (from Apply)
+local function commit(self, rec)
+    local packed = pack(rec)
+    local ok, why = self:Apply(packed, GA.playerName, true)
+    if ok then GA.Comm:Send("U", packed, "GUILD", nil, "ALERT") end
+    return ok, why
 end
 
--- title is optional for callers that predate it; a note needs a title or a text.
+-- In: old record.  Out: a copy of it as the next revision, written by us
+local function nextRevision(old)
+    local rec = {}
+    for k, v in pairs(old) do rec[k] = v end
+    rec.rev, rec.updatedBy = math.max(time(), old.rev + 1), GA.playerName
+    return rec
+end
+
+-- Adds a note. It needs a title or a text.
+-- In:  text (the details), cat, mapID, x, y (0..1), title
+-- Out: the new id, or nil, reason ("empty-text", or from Apply)
 function POI:Create(text, cat, mapID, x, y, title)
-    text, title = cleanText(text), cleanTitle(title)
-    if text == "" and title == "" then return nil, "empty-text" end
     local rec = {
         id = newID(), rev = time(), author = GA.playerName, updatedBy = GA.playerName,
-        mapID = mapID, x = clampQ(x) / 10000, y = clampQ(y) / 10000,
-        text = text, title = title, cat = POI.CATEGORIES[cat] and cat or "other",
+        mapID = mapID, x = x, y = y, text = cleanText(text), title = cleanTitle(title), cat = cat,
     }
-    local ok, why = self:Apply(rec, GA.playerName, true)
+    if rec.text == "" and rec.title == "" then return nil, "empty-text" end
+    local ok, why = commit(self, rec)
     if not ok then return nil, why end
-    broadcast(self:Get(rec.id))
     return rec.id
 end
 
+-- Changes a note (author or officer).
+-- In:  id;  changes = { title = , text = , cat = }, each optional
+-- Out: true, or false, reason ("unknown-id" | "empty-text", or from Apply)
 function POI:Edit(id, changes)
     local old = self:Get(id)
     if not old or old.deleted then return false, "unknown-id" end
-    local rec = {}
-    for k, v in pairs(old) do rec[k] = v end
-    rec.rev = math.max(time(), old.rev + 1)
-    rec.updatedBy = GA.playerName
-    if changes.text then rec.text = cleanText(changes.text) end
+    local rec = nextRevision(old)
     if changes.title then rec.title = cleanTitle(changes.title) end
-    if changes.cat and POI.CATEGORIES[changes.cat] then rec.cat = changes.cat end
+    if changes.text then rec.text = cleanText(changes.text) end
+    if POI.CATEGORIES[changes.cat] then rec.cat = changes.cat end
     if rec.text == "" and (rec.title or "") == "" then return false, "empty-text" end
-    local ok, why = self:Apply(rec, GA.playerName, true)
-    if ok then broadcast(self:Get(id)) end
-    return ok, why
+    return commit(self, rec)
 end
 
+-- Deletes a note (author or officer) by replacing it with a tombstone, which syncs like any record.
+-- In: id.  Out: true, or false, reason ("unknown-id", or from Apply)
 function POI:Remove(id)
     local old = self:Get(id)
     if not old or old.deleted then return false, "unknown-id" end
-    local rec = {}
-    for k, v in pairs(old) do rec[k] = v end
-    rec.rev, rec.updatedBy, rec.deleted, rec.text, rec.title = math.max(time(), old.rev + 1), GA.playerName, true, "", ""
-    local ok, why = self:Apply(rec, GA.playerName, true)
-    if ok then broadcast(self:Get(id)) end
-    return ok, why
+    local rec = nextRevision(old)
+    rec.deleted, rec.text, rec.title = true, "", ""
+    return commit(self, rec)
 end
 
 ---------------------------------------------------------------------------
 -- sync
 ---------------------------------------------------------------------------
-local lastHelloAt, answered = 0, {}
+local answered = {}   -- sender -> GetTime() of our last digest to them
 
+-- Forgets tombstones older than TOMBSTONE_TTL.
 function POI:PurgeTombstones()
     local s, cutoff = self:Store(), time() - TOMBSTONE_TTL
     if not s then return end
-    for id, rec in pairs(s) do if rec.deleted and rec.rev < cutoff then s[id] = nil end end
+    for id, rec in pairs(s) do
+        if rec.deleted and rec.rev < cutoff then s[id] = nil end
+    end
 end
 
+-- Sends a hello (count + checksum) to the guild. Guildmates whose notes differ answer with a digest, which we
+-- accept for the next 3 minutes.
+-- Out: true if sent
 function POI:SendHello()
-    local comm = GA.Comm
-    if not (comm and self:Store()) then return false end
+    if not self:Store() then return false end
     self:PurgeTombstones()
     local count, sum = self:Checksum()
-    lastHelloAt = GetTime()
-    self.syncUntil = lastHelloAt + 180          -- digests are only accepted inside this window
-    if not comm:Send("H", { count, sum }, "GUILD", nil, "NORMAL") then return false end
+    self.syncUntil = GetTime() + 180
+    if not GA.Comm:Send("H", { count, sum }, "GUILD", nil, "NORMAL") then return false end
     GA:Debug("hello sent", count, sum)
     return true
 end
 
--- Login: wait for the roster, then a random 5-15 s so 50 people logging in together don't all hello at once.
+-- After login: waits for the roster, then 5-15 s at random so a guild logging in together doesn't hello at once.
+-- In: attempt  1 (default) .. 6; retried every 5 s while the roster isn't known
 function POI:ScheduleHello(attempt)
     attempt = attempt or 1
     C_Timer.After(attempt == 1 and math.random(5, 15) or 5, function()
-        if GA.rosterReady and GA:InGuild() then
+        if GA.rosterReady then
             self:SendHello()
         elseif attempt < 6 then
             GA:RequestRoster()
@@ -291,6 +346,8 @@ function POI:ScheduleHello(attempt)
     end)
 end
 
+-- Whispers records to a player, RECORDS_PER_MSG per message.
+-- In: to  player name;  recs  list of records
 local function sendRecords(to, recs)
     local chunk = {}
     for _, rec in ipairs(recs) do
@@ -300,13 +357,14 @@ local function sendRecords(to, recs)
     if #chunk > 0 then GA.Comm:Send("R", chunk, "WHISPER", to, "NORMAL") end
 end
 
+-- H: someone logged in. If their checksum differs from ours, whisper them our digest (at most once a minute each).
 function POI:OnHello(sender, payload)
     if type(payload) ~= "table" or type(payload[1]) ~= "number" or type(payload[2]) ~= "number" then return end
     local count, sum = self:Checksum()
-    if payload[1] == count and payload[2] == sum then return end          -- identical state: stay silent
+    if payload[1] == count and payload[2] == sum then return end   -- same notes: stay silent
     if answered[sender] and GetTime() - answered[sender] < 60 then return end
     answered[sender] = GetTime()
-    -- Random delay spreads up-to-49 simultaneous answers. TODO(optimisation): suppress when another peer already answered.
+    -- A random delay spreads up to 49 simultaneous answers. TODO(optimisation): skip if another peer already answered.
     C_Timer.After(1 + math.random() * 5, function()
         local store = self:Store()
         if not store then return end
@@ -316,8 +374,9 @@ function POI:OnHello(sender, payload)
     end)
 end
 
+-- G: a digest in answer to our hello. Request what is newer there, send what is newer (or missing) there.
 function POI:OnDigest(sender, payload)
-    if not (self.syncUntil and GetTime() < self.syncUntil) then return end
+    if not (self.syncUntil and GetTime() < self.syncUntil) then return end   -- only shortly after our own hello
     local store = self:Store()
     if not store or type(payload) ~= "table" or #payload > MAX_DIGEST_ENTRIES * 2 then return end
     local remote, need, offer = {}, {}, {}
@@ -342,6 +401,7 @@ function POI:OnDigest(sender, payload)
     sendRecords(sender, offer)
 end
 
+-- Q: someone asks for records by id (at most 100 per request).
 function POI:OnRequest(sender, payload)
     local store = self:Store()
     if not store or type(payload) ~= "table" then return end
@@ -353,24 +413,23 @@ function POI:OnRequest(sender, payload)
     sendRecords(sender, recs)
 end
 
+-- R: records relayed by a peer (at most 20 per message).
 function POI:OnRecords(sender, payload)
     if type(payload) ~= "table" then return end
     local applied = 0
     for i = 1, math.min(#payload, 20) do
-        local ok = self:Apply(payload[i], sender, false)
-        if ok then applied = applied + 1 end
+        if self:Apply(payload[i], sender, false) then applied = applied + 1 end
     end
     if applied > 0 then GA:Debug("sync: applied", applied, "from", sender) end
 end
 
+-- U: a live update from its writer.
 function POI:OnUpdate(sender, payload)
     local ok, why = self:Apply(payload, sender, true)
     if not ok and why ~= "stale" then GA:Debug("U rejected from", sender, why) end
 end
 
----------------------------------------------------------------------------
--- lifecycle + slash
----------------------------------------------------------------------------
+-- AceAddon callback: message handlers, and the first hello after login.
 function POI:OnEnable()
     local comm = GA.Comm
     comm:RegisterHandler("U", function(s, p) self:OnUpdate(s, p) end)
@@ -379,108 +438,105 @@ function POI:OnEnable()
     comm:RegisterHandler("Q", function(s, p) self:OnRequest(s, p) end)
     comm:RegisterHandler("R", function(s, p) self:OnRecords(s, p) end)
     -- secret entered or changed: sync with the guildmates who share it
-    self:RegisterMessage("SAWIT_GUILD_SECRET_CHANGED", function() if GA:CanUseNetwork() then self:SendHello() end end)
+    self:RegisterMessage("SAWIT_GUILD_SECRET_CHANGED", function() self:SendHello() end)
     self:RegisterEvent("PLAYER_ENTERING_WORLD", function()
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
-        self:ScheduleHello(1)
+        self:ScheduleHello()
     end)
 end
 
-local function mapName(mapID)
-    local info = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(mapID)
-    return info and info.name or ("map " .. mapID)
+---------------------------------------------------------------------------
+-- text output and /sawit note commands
+---------------------------------------------------------------------------
+-- In: mapID.  Out: the map's name, or "map <id>"
+function POI.MapName(mapID)
+    local info = C_Map.GetMapInfo(mapID)
+    return info and info.name or ("map " .. tostring(mapID))
 end
-POI.MapName = mapName
 
+-- One line for chat: "[Rare spawn] Title - details  (Zone 45.2, 60.3)  by Name  id tm751se74"
+-- In: rec.  Out: string
 function POI:Describe(rec)
-    local c = POI.CATEGORIES[rec.cat]
-    local body = (rec.title ~= nil and rec.title ~= "") and (rec.title .. (rec.text ~= "" and (" - " .. rec.text) or "")) or rec.text
-    return ("|cff%s[%s]|r %s  (%s %.1f, %.1f)  by %s  id %s"):format(c.color, c.label, body, mapName(rec.mapID), rec.x * 100, rec.y * 100, rec.author, rec.id)
+    local c, details = POI.CATEGORIES[rec.cat], POI.Details(rec)
+    return ("|cff%s[%s]|r %s%s  (%s %.1f, %.1f)  by %s  id %s"):format(c.color, c.label, POI.DisplayTitle(rec),
+        details ~= "" and (" - " .. details) or "", POI.MapName(rec.mapID), rec.x * 100, rec.y * 100, rec.author, rec.id)
 end
 
--- "Title; details" -> title, details. Without ';' the whole input is the title and details is nil
--- (so /sawit edit <id> <title> keeps the existing details; "title;" clears them).
-local function splitTitle(s)
-    local title, text = s:match("^(.-)%s*;%s*(.*)$")
-    if title then return title, text end
-    return s, nil
-end
-POI._splitTitle = splitTitle
+local HELP = {
+    "/sawit status | share [on|off] | pause | debug | secret [clear]",
+    "/sawit add [category] <title>[; details]   add a note here. Or Shift+right-click the world map.",
+    "/sawit my [here]   your own notes      /sawit list [here]   all notes      /sawit cats   categories",
+    "/sawit edit <id> [category] <title>[; details]      /sawit del <id>      /sawit sync      /sawit stats",
+    "/sawit filter [category]   show/hide a category      /sawit map   notes on the world map      /sawit minimap   notes on the minimap",
+}
 
+-- Handles the note commands of /sawit and help (Core:SlashCommand forwards them).
+-- In: input  text after "/sawit", e.g. "add rare Mother Fang; near the cave"
 function POI:SlashCommand(input)
     local cmd, rest = (input or ""):match("^(%S*)%s*(.-)$")
-    local lc = cmd:lower()
-    if lc == "" or lc == "help" then
-        self:Print("/sawit status | share [on|off] | pause | debug | secret [clear]")
-        self:Print("/sawit add [category] <title>[; details]   add a note here. Or Shift+right-click the world map.")
-        self:Print("/sawit my [here]   your own notes      /sawit list [here]   all notes      /sawit cats   categories")
-        self:Print("/sawit edit <id> [category] <title>[; details]      /sawit del <id>      /sawit sync      /sawit stats")
-        self:Print("/sawit filter [category]   show/hide a category      /sawit map   notes on the world map      /sawit minimap   notes on the minimap")
-    elseif lc == "cats" then
-        for _, k in ipairs(POI.CATEGORY_ORDER) do self:Print(k, "-", POI.CATEGORIES[k].label) end
-    elseif lc == "filter" then
-        local key = rest:lower()
-        local filters = GA.db.profile.poi.filters
+    cmd = cmd:lower()
+    if cmd == "" or cmd == "help" then
+        for _, line in ipairs(HELP) do GA:Print(line) end
+    elseif cmd == "add" then
+        -- needs the word "add", so a mistyped command never becomes a note
+        local cat, text = splitCategory(rest)
+        local mapID, x, y = GA:GetPlayerPosition()
+        if not mapID then return GA:Print("no position available here (" .. tostring(x) .. ")") end
+        local title, details = splitTitle(text)
+        local id, why = self:Create(details or "", cat or "other", mapID, x, y, title)
+        GA:Print(id and ("added " .. id) or ("cannot add: " .. tostring(why)))
+    elseif cmd == "edit" then
+        local id, tail = rest:match("^(%S*)%s*(.-)$")
+        local cat, text = splitCategory(tail)
+        local changes = { cat = cat }
+        if text ~= "" then changes.title, changes.text = splitTitle(text) end
+        local ok, why = self:Edit(id, changes)
+        GA:Print(ok and "updated" or ("cannot edit: " .. tostring(why)))
+    elseif cmd == "del" then
+        local ok, why = self:Remove(rest)
+        GA:Print(ok and "deleted" or ("cannot delete: " .. tostring(why)))
+    elseif cmd == "list" or cmd == "my" then
+        local here, mine, n = GA:GetPlayerPosition(), cmd == "my", 0
+        for _, rec in self:Iterate() do
+            if (rest ~= "here" or rec.mapID == here) and (not mine or rec.author == GA.playerName) then
+                n = n + 1
+                GA:Print(self:Describe(rec))
+            end
+        end
+        if not mine then
+            GA:Print(n .. " note(s)")
+        else
+            GA:Print(n .. " note(s) by you" .. (n > 0 and "   change: /sawit edit <id> ...   remove: /sawit del <id>" or ""))
+        end
+    elseif cmd == "cats" then
+        for _, k in ipairs(POI.CATEGORY_ORDER) do GA:Print(k, "-", POI.CATEGORIES[k].label) end
+    elseif cmd == "filter" then
+        local key, filters = rest:lower(), GA.db.profile.poi.filters
         if POI.CATEGORIES[key] then
             GA.POIMap:SetFilter(key, not filters[key])
         elseif key ~= "" then
-            return self:Print("unknown category '" .. rest .. "' (see /sawit cats)")
+            return GA:Print("unknown category '" .. rest .. "' (see /sawit cats)")
         end
         for _, k in ipairs(POI.CATEGORY_ORDER) do
-            self:Print(("%-6s %s"):format(k, filters[k] and "|cff40ff40shown|r" or "|cffff4040hidden|r"))
+            GA:Print(("%-6s %s"):format(k, filters[k] and "|cff40ff40shown|r" or "|cffff4040hidden|r"))
         end
-    elseif lc == "map" then
+    elseif cmd == "map" then
         GA.POIMap:SetWorldMap(not GA.db.profile.poi.showWorldMap)
-        self:Print("notes on world map: " .. (GA.db.profile.poi.showWorldMap and "shown" or "hidden"))
-    elseif lc == "minimap" then
+        GA:Print("notes on world map: " .. (GA.db.profile.poi.showWorldMap and "shown" or "hidden"))
+    elseif cmd == "minimap" then
         GA.POIMap:SetMinimap(not GA.db.profile.poi.showMinimap)
-        self:Print("notes on minimap: " .. (GA.db.profile.poi.showMinimap and "shown" or "hidden"))
-    elseif lc == "list" or lc == "my" then
-        local here = GA:GetPlayerPosition()
-        local mine = (lc == "my")
-        local n = 0
-        for _, rec in self:Iterate() do
-            if (rest ~= "here" or rec.mapID == here) and (not mine or rec.author == GA.playerName) then
-                n = n + 1; self:Print(self:Describe(rec))
-            end
-        end
-        if mine then
-            self:Print(n .. " note(s) by you" .. (n > 0 and "   change: /sawit edit <id> ...   remove: /sawit del <id>" or ""))
-        else
-            self:Print(n .. " note(s)")
-        end
-    elseif lc == "del" then
-        local ok, why = self:Remove(rest)
-        self:Print(ok and "deleted" or ("cannot delete: " .. tostring(why)))
-    elseif lc == "edit" then
-        local id, tail = rest:match("^(%S+)%s*(.-)$")
-        local first, text = tail:match("^(%S+)%s*(.-)$")
-        local changes = {}
-        if first and POI.CATEGORIES[first:lower()] then changes.cat = first:lower() else text = tail end
-        if text ~= "" then changes.title, changes.text = splitTitle(text) end
-        local ok, why = self:Edit(id or "", changes)
-        self:Print(ok and "updated" or ("cannot edit: " .. tostring(why)))
-    elseif lc == "sync" then
-        self:Print(self:SendHello() and "sync hello sent" or ("cannot sync: " .. (GA:NetworkBlockReason() or "not ready")))
-    elseif lc == "stats" then
+        GA:Print("notes on minimap: " .. (GA.db.profile.poi.showMinimap and "shown" or "hidden"))
+    elseif cmd == "sync" then
+        GA:Print(self:SendHello() and "sync hello sent" or ("cannot sync: " .. (GA:NetworkBlockReason() or "not ready")))
+    elseif cmd == "stats" then
         local count, sum = self:Checksum()
         local live = 0
         for _ in self:Iterate() do live = live + 1 end
-        self:Print(("records=%d (live %d) checksum=%d"):format(count, live, sum))
+        GA:Print(("records=%d (live %d) checksum=%d"):format(count, live, sum))
         local st = GA.Comm.stats
-        self:Print(("comm: tx %d msgs/%dB, rx %d msgs/%dB, dropped %d, bad-proto %d"):format(st.txData, st.txBytes, st.rxData, st.rxBytes, st.dropped, st.badProto))
-    elseif lc == "add" then
-        -- /sawit add [category] title[; details]. Needs the word "add", so a mistyped command never becomes a note.
-        local text = rest
-        local first, tail = text:match("^(%S+)%s*(.-)$")
-        local cat = "other"
-        if first and POI.CATEGORIES[first:lower()] then cat, text = first:lower(), tail end
-        local mapID, x, y = GA:GetPlayerPosition()
-        if not mapID then return self:Print("no position available here (" .. tostring(x) .. ")") end
-        local title, details = splitTitle(text)
-        local id, why = self:Create(details or "", cat, mapID, x, y, title)
-        self:Print(id and ("added " .. id) or ("cannot add: " .. tostring(why)))
+        GA:Print(("comm: tx %d msgs/%dB, rx %d msgs/%dB, dropped %d, bad-proto %d"):format(st.txData, st.txBytes,
+            st.rxData, st.rxBytes, st.dropped, st.badProto))
     else
-        self:Print("unknown command '" .. cmd .. "' (/sawit help)")
+        GA:Print("unknown command '" .. cmd .. "' (/sawit help)")
     end
 end

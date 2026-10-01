@@ -118,6 +118,14 @@ P:SlashCommand("edit " .. tid .. " Mother Fang the Elder")
 check(P:Get(tid).title == "Mother Fang the Elder" and P:Get(tid).text == "near the cave", "/sawit edit <id> <title> keeps the details")
 P:SlashCommand("edit " .. tid .. " rare Mother Fang; by the lake")
 check(P:Get(tid).title == "Mother Fang" and P:Get(tid).text == "by the lake", "/sawit edit <id> [cat] <title>; <details> sets both")
+check(pcall(P.SlashCommand, P, "edit") and pcall(P.SlashCommand, P, "edit   "), "/sawit edit without arguments doesn't error")
+check(P.Details({ title = "T", text = "d" }) == "d" and P.Details({ title = "", text = "short" }) == ""
+    and P.Details({ title = "", text = ("x"):rep(60) }) == ("x"):rep(60), "Details: text under a title; untitled only when cut")
+check(not B.poi:Apply(42, "Alice", true) and not B.poi:Apply("junk", "Alice", false), "non-table payloads are rejected, not thrown")
+local good = deepcopy(P._pack(P:Get(tid))); good[2] = good[2] + 10; good[11] = "after junk"
+B.poi:OnRecords("Cara", { 7, "junk", good })
+check(B.poi:Get(tid).title == "after junk", "a junk entry in a sync batch doesn't stop the valid ones")
+P:OnRecords("Cara", { good })   -- Alice gets the same revision, so her delete below is newer everywhere
 now = now + 5
 P:Remove(tid); P:Remove(tonly)
 pump()
