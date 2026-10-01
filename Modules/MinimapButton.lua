@@ -1,6 +1,5 @@
 --[[
-SawIt - minimap button (LibDataBroker + LibDBIcon).
-The addon object and saved variables are created in Core\Core.lua; this file is only a module, loaded last.
+SawIt - MinimapButton: the minimap button (LibDataBroker + LibDBIcon; position saved in profile.minimap).
   Left-click        add a note at your position (NoteDialog)
   Shift-left-click  status (same as /sawit status)
   Right-click       toggle live location sharing
@@ -15,17 +14,21 @@ local Button = GA:NewModule("MinimapButton", "AceEvent-3.0")
 local LDB = LibStub("LibDataBroker-1.1")
 local icon = LibStub("LibDBIcon-1.0")
 
+-- Out: number of guildmates currently shown on the map
 local function countPlayers()
     local n = 0
-    for _ in pairs(GA.Positions and GA.Positions.players or {}) do n = n + 1 end
+    for _ in pairs(GA.Positions.players) do n = n + 1 end
     return n
 end
 
+-- Out: number of notes (not deleted) of the current guild
 local function countNotes()
     local n = 0
-    if GA.POI then for _ in GA.POI:Iterate() do n = n + 1 end end
+    for _ in GA.POI:Iterate() do n = n + 1 end
     return n
 end
+
+local SHARING_LABEL = { sent = "|cff40ff40ON|r", blocked = "|cffffa020ON (not sent)|r", off = "|cffff4040OFF|r" }
 
 local dataObject = LDB:NewDataObject("SawIt", {
     type = "data source",
@@ -33,7 +36,7 @@ local dataObject = LDB:NewDataObject("SawIt", {
     icon = "Interface\\AddOns\\SawIt\\Media\\icon",
     OnClick = function(_, button)
         if button == "RightButton" then
-            if GA.Positions then GA.Positions:SetSharing(not GA.db.profile.positions.share) end
+            GA.Positions:SetSharing(not GA.db.profile.positions.share)
         elseif IsShiftKeyDown() then
             GA:SlashCommand("status")
         else
@@ -41,11 +44,8 @@ local dataObject = LDB:NewDataObject("SawIt", {
         end
     end,
     OnTooltipShow = function(tooltip)
-        local share = GA.db.profile.positions.share
         tooltip:AddLine("SawIt")
-        local state = GA.Positions and GA.Positions:SharingState() or (share and "sent" or "off")
-        local label = { sent = "|cff40ff40ON|r", blocked = "|cffffa020ON (not sent)|r", off = "|cffff4040OFF|r" }
-        tooltip:AddLine("Location sharing: " .. label[state], 1, 1, 1)
+        tooltip:AddLine("Location sharing: " .. SHARING_LABEL[GA.Positions:SharingState()], 1, 1, 1)
         local blocked = GA:NetworkBlockReason()
         if blocked then tooltip:AddLine("Not connected to guildmates: " .. blocked, 1, 0.63, 0.13, true) end
         tooltip:AddLine(("Guildmates on map: %d   Notes: %d"):format(countPlayers(), countNotes()), 1, 1, 1)
@@ -71,7 +71,7 @@ function Button:UpdateRing()
         self.ring:SetSize(26, 26)
         self.ring:SetPoint("CENTER", b.icon, "CENTER")
     end
-    local c = RING_COLORS[GA.Positions and GA.Positions:SharingState() or "off"]
+    local c = RING_COLORS[GA.Positions:SharingState()]
     if c then
         self.ring:SetVertexColor(c[1], c[2], c[3], 1)
         self.ring:Show()
@@ -80,11 +80,12 @@ function Button:UpdateRing()
     end
 end
 
+-- AceAddon callback: registers the button. Runs after Core's OnInitialize, so GA.db exists.
 function Button:OnInitialize()
-    -- Module init runs after the addon's OnInitialize, so GA.db exists here.
     icon:Register("SawIt", dataObject, GA.db.profile.minimap)
 end
 
+-- AceAddon callback: keeps the ring up to date.
 function Button:OnEnable()
     self:RegisterMessage("GUILDATLAS_SHARING_CHANGED", "UpdateRing")
     -- guild membership decides green vs orange; it is only known after login and can change
