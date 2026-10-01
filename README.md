@@ -28,7 +28,7 @@ This repo currently contains:
 | `GuildAtlasProto/` | Build step 2: standalone prototype with no Ace dependency, used to test the beta's API assumptions | complete |
 | `GuildAtlas/` | The real addon: Core, Comm, POI (records and sync), POIMap (own HBD pins), Positions | Comm and POI are real; Positions and POIMap are first-pass and untested in game |
 | `tests/test_poi.lua` | Offline tests (plain Lua 5.1) for POI permissions, validation, sync convergence and the position packet | passing |
-| `tests/test_crypto.lua` | SHA-256, HMAC, PBKDF2 and seal/open against Python `hashlib`/`hmac` reference values | passing |
+| `tests/test_crypto.lua` | SHA-256/HMAC (LibHash), PBKDF2 and seal/open against Python `hashlib`/`hmac` reference values | passing |
 
 > Nothing here has been run inside a WoW client yet. Code was syntax-checked with `luac5.1`, and the
 > record/sync logic plus the serializer/compression round trip were exercised offline. Every in-game
@@ -63,6 +63,7 @@ Vendored unmodified in `GuildAtlas/Libs/` (and the HBD/LibStub subset in `GuildA
 | AceSerializer-3.0 | Ace3 `a360495` | POI payload serialization |
 | LibDeflate | SafeteeWoW/LibDeflate `afc3b78` | optional compression of data messages |
 | HereBeDragons-2.0, -Pins-2.0 | Nevcairiel/HereBeDragons `0547c95` (MINOR 33) | coordinates and map/minimap icons |
+| LibHash-1.0 | CurseForge project 383484, file 1.0.0 (2020-05-14), port of Egor Skriptunoff's pure_lua_SHA v9, MIT | SHA-256 and HMAC for the guild secret (`Core/Crypto.lua`) |
 
 `Libs/embeds.xml` is the single load list. Ace3's own `.toc` (checked when this was written) already lists
 interface `16001`, so Ace3 is known to target this client. HereBeDragons' and HandyNotes' own `.toc` files did not list 16001,
@@ -235,7 +236,8 @@ out privately, e.g. in a Discord officer channel, never in guild chat). SawIt th
   check code in `SawItDB`, per guild and realm, account-wide. Guildmates compare check codes (`/sawit status`) to confirm they
   typed the same secret;
 - encrypts every message on both prefixes (HMAC-SHA256 in counter mode) and adds an 80-bit tag bound to the channel
-  and the sender's name, checked before anything else is done with a message (`Core/Crypto.lua`, `Core/Comm.lua`);
+  and the sender's name, checked before anything else is done with a message (`Core/Crypto.lua`, `Core/Comm.lua`).
+  SHA-256 and HMAC come from the LibHash-1.0 library; SawIt only combines them;
 - sends nothing without a secret, and drops everything that isn't sealed with its key: unencrypted messages (older
   versions, or a member without the secret), a wrong secret, tampering, a message re-sent by another player.
   `/sawit status` counts these, so a mistyped secret is visible.
@@ -301,7 +303,7 @@ The step-by-step in-game checklist for all of this is **`TODO.md`**.
 ```
 lua5.1 tests/test_poi.lua     # POI records, permissions, sync, position packet
 lua5.1 tests/test_load.lua    # loads every file in .toc order with stubbed WoW API, fires login events
-lua5.1 tests/test_crypto.lua  # crypto primitives vs Python reference values, both bit-library code paths
+lua5.1 tests/test_crypto.lua  # crypto (LibHash + our constructions) vs Python reference values
 ```
 
 ## Layout
@@ -312,7 +314,7 @@ SawIt/
   Libs/                Ace3 (full), LibDataBroker, LibDBIcon, HereBeDragons, LibDeflate
   Media/icon.tga       minimap/addon-list icon
   Core/Core.lua        addon object, AceDB, roster cache, position helper, /sawit
-  Core/Crypto.lua      SHA-256, HMAC, PBKDF2, seal/open with the guild secret (pure Lua)
+  Core/Crypto.lua      PBKDF2, seal/open with the guild secret, built on LibHash's SHA-256/HMAC
   Core/Comm.lua        prefixes, sealed envelope, compression flag, rate limit, handler registry
   Modules/POI.lua      records, validation, permissions, sync, note commands of /sawit
   Modules/POIMap.lua   note pins on world map + minimap (HBD-Pins), tooltips, click actions, category filters

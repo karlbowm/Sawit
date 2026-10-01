@@ -14,8 +14,8 @@ SawIt version.
 - [ ] **Login reminder.** In a guild with no secret set, you get one chat line: "No guild secret set ... /sawit secret".
 - [ ] **Window.** `/sawit secret` opens above the world map (open the map first to check). Generate fills in a secret like
       `K7QWM-3PZXA-...` and highlights it; Ctrl+C copies it. Escape and Cancel close it and clear the box.
-- [ ] **Save time.** Save runs the 1000-round key derivation. Note how long the game freezes. It takes 0.8 s in plain Lua;
-      it should be shorter with WoW's `bit` library.
+- [ ] **Save time.** Save runs the 1000-round key derivation. Note how long the game freezes. It takes ~1 s in plain Lua
+      (LibHash uses pure arithmetic, not WoW's `bit` library, so the game may not be much faster).
       *If it's noticeable:* spread `Crypto.PBKDF2` over several frames (coroutine plus `C_Timer`). Don't lower
       `KDF_ITER` without also changing the salt version.
 - [ ] **Check code.** Both characters enter the same secret. `/sawit status` shows the same check code (e.g. `6FA-40D`) on
@@ -112,3 +112,18 @@ SawIt version.
 - [ ] Bump `## Version` in `SawIt.toc` and `GA.VERSION` in `Core/Core.lua`.
 - [ ] Replace the placeholder `## X-Curse-Project-ID: 999999` in `SawIt.toc`, or remove it.
 - [ ] Every guildmate on the same version. Older SawIt and standalone GuildAtlas can't talk to this version.
+
+---
+
+## Later: crypto performance (review once in-game timings from section 1 are known)
+
+Measured offline (plain Lua) since switching to LibHash-1.0: key derivation on Save ~1 s, seal + open of a 2 KB sync
+message ~140 ms, a position packet ~4 ms. Options, without modifying LibHash (keep it a drop-in dependency):
+- [ ] **Precompute the HMAC key pads.** `LH.hmac` re-hashes the padded key on every call; `Crypto.lua` calls it with the
+      same two keys over and over (one call per 32 keystream bytes, plus the tag). LibHash's chunked API
+      (`LH.sha256()` returns an appender) may allow keeping the inner/outer states, or cache per context.
+- [ ] **Avoid hex round trips.** Every LibHash result is hex and goes through `hex2bin`.
+- [ ] **Native `bit` library.** LibHash uses arithmetic lookup tables, never WoW's `bit`. Compare with upstream
+      pure_lua_SHA (newer than the 2020 port, detects `bit`) before considering a swap.
+- [ ] **Spread work over frames.** PBKDF2 on Save and big sync bursts could run in a coroutine via `C_Timer`.
+Any change must keep `tests/test_crypto.lua` passing (Python reference values), so output stays byte-identical.

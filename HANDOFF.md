@@ -48,6 +48,10 @@ by that note; the in-game limits (message size, throttle, lockdown timing) still
   green = sharing on and sent, orange = on but blocked (test mode / no guild), hidden = off. State from
   `Positions:SharingState()`, updated on the `GUILDATLAS_SHARING_CHANGED` message and on login/guild change. Anchored to the
   LibDBIcon icon, not the button, because LibDBIcon's layout depends on the unverified WOW_PROJECT_ID.
+- **Crypto primitives from a library** (2026-10-01): our own SHA-256/HMAC (and the bit-op code) were replaced by
+  LibHash-1.0 (`Libs/LibHash-1.0`, unmodified, loaded from `embeds.xml`). Output is byte-identical (same Python
+  vectors). Cost in plain Lua: key derivation 0.76 -> 0.99 s, a 2 KB sync message ~120 -> ~140 ms. LibHash never uses
+  WoW's native `bit` library and recomputes the HMAC key pads per call: first places to optimise.
 - **Guild secret** (2026-09-30, so the addon can be published): `Core/Crypto.lua` (pure-Lua SHA-256/HMAC/PBKDF2, HMAC-CTR
   encryption, 80-bit tag bound to channel + sender without realm), used by `Core/Comm.lua` on BOTH prefixes. No secret =
   `CanUseNetwork()` false (nothing sent, nothing read); plaintext is always dropped. Key stored per guild+realm in

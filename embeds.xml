@@ -14,4 +14,6 @@
   <Script file="Libs\HereBeDragons\HereBeDragons-2.0.lua"/>
   <Script file="Libs\HereBeDragons\HereBeDragons-Pins-2.0.lua"/>
   <Script file="Libs\LibDeflate\LibDeflate.lua"/>
+  <!-- LibHash-1.0 1.0.0 (CurseForge 383484, 2020-05-14; port of pure_lua_SHA v9), unmodified: SHA-256 + HMAC for Core/Crypto.lua -->
+  <Script file="Libs\LibHash-1.0\LibHash-1.0.lua"/>
 </Ui>

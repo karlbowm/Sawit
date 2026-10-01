@@ -26,10 +26,10 @@ Keep README, HANDOFF and TODO in sync with code changes. Existing docs use dated
 
 ```
 embeds.xml               libraries: Ace3 (Addon, Event, Console, DB, Serializer, Comm+ChatThrottleLib), LDB, LibDBIcon,
-                         HereBeDragons-2.0 + Pins, LibDeflate (all vendored unmodified)
+                         HereBeDragons-2.0 + Pins, LibDeflate, LibHash-1.0 (all vendored unmodified)
 Core/Core.lua            addon object GA (= ns.addon = _G.SawIt), AceDB "SawItDB", TEST_MODE flag, guild helpers,
                          guild secret storage, roster cache, player position, /sawit (+ aliases /guildatlas, /gatlas)
-Core/Crypto.lua          pure-Lua SHA-256, HMAC, PBKDF2, Seal/Open (encrypt + 80-bit tag), nonces, RandomSecret
+Core/Crypto.lua          PBKDF2, Seal/Open (encrypt + 80-bit tag), nonces, RandomSecret on top of LibHash's SHA-256/HMAC
 Core/Comm.lua            prefixes GAtlasD (data) and GAtlasP (positions); seal/open, compression, rate limits, handlers
 Modules/POI.lua          note records, validation, permissions, sync (hello/digest/request/records), note subcommands
 Modules/POIMap.lua       note pins (HBD-Pins), tooltips, clicks, chat link, waypoints, filters, world-map button + click hook
@@ -48,7 +48,7 @@ Utils.lua                stray one-liner, not in the .toc (unused)
 Lua 5.1 is installed user-locally: `~/.local/bin/lua5.1`, `luac5.1` (from `~/.local/opt/lua5.1`). Run from this folder:
 ```
 luac5.1 -p <changed files>       # syntax
-lua5.1 tests/test_crypto.lua     # crypto vs Python hashlib/hmac vectors; runs both bit-library code paths
+lua5.1 tests/test_crypto.lua     # crypto (LibHash + our constructions) vs Python hashlib/hmac vectors
 lua5.1 tests/test_poi.lua        # records, permissions, titles, 4-client sync convergence, position packet
 lua5.1 tests/test_load.lua       # loads every .toc file against stubbed WoW API; UI, clicks, commands, secret, round trip
 ```
@@ -67,6 +67,8 @@ Test-harness quirks:
   secret set), `NetworkBlockReason()`, `NetContext()`.
 - **"secret" is taken.** `GA.isSecret` means WoW's *secret values* (`issecretvalue`). The guild secret uses GuildSecret /
   netKeys / NetContext naming.
+- **No home-made crypto primitives.** SHA-256 and HMAC come from LibHash-1.0; `Crypto.lua` only combines them
+  (PBKDF2, HMAC counter-mode stream, encrypt-then-MAC). Keep it that way; any change must keep the Python vectors.
 - **Addon-message security:** every message on both prefixes is sealed. Never add a path that accepts plaintext, and
   check the seal (`Crypto.Open`) before decompressing or deserializing. Rate limits run before any crypto work. The tag
   binds kind (`"D"`/`"P"`) and the sender name without realm (`short()` in Comm.lua).
@@ -111,5 +113,6 @@ Test-harness quirks:
 
 - An Edit button in the delete window (reusing the add-note window prefilled).
 - A chat filter so SawIt users see `[Cat: Title]` as the clickable part of shared links (local display only).
-- Spreading the key derivation over several frames if Save freezes noticeably in game.
+- Crypto performance review (HMAC key-pad caching, hex round trips, native `bit`, spreading work over frames):
+  see the "Later: crypto performance" section of `TODO.md`.
 - Per-player signatures for relayed sync records (a shared secret can't prove authorship).

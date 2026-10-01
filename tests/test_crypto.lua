@@ -1,8 +1,9 @@
 -- Offline test of Core/Crypto.lua against reference values from Python's hashlib/hmac (generated, not typed in).
 -- Run from the SawIt folder:   lua5.1 tests/test_crypto.lua
--- Plain Lua has no `bit` library, so this first exercises the pure-Lua fallback; the second run goes through the
--- `bit` code path with a LuaBitOp-like shim (see the bottom).
+-- Loads LibStub and LibHash-1.0 as the game does (embeds.xml), then Crypto.lua.
 time = os.time
+assert(loadfile("Libs/Ace3/LibStub/LibStub.lua"))()
+assert(loadfile("Libs/LibHash-1.0/LibHash-1.0.lua"))()
 local ns = { addon = {} }
 assert(loadfile("Core/Crypto.lua"))("SawIt", ns)
 local C = ns.addon.Crypto
@@ -67,30 +68,6 @@ local function run()
     check(s1:match("^[A-Z2-9]+%-[A-Z2-9]+%-[A-Z2-9]+%-[A-Z2-9]+$") and #s1 == 23 and s1 ~= s2, "generated secret looks like " .. s1)
 end
 
-print("-- pure-Lua bit fallback")
-run()
-
--- Same checks through the `bit` code path, with a LuaBitOp-like shim that returns SIGNED 32-bit results (the
--- worst case for WoW's bit library), to prove the mod-2^32 normalisation.
-print("-- bit library path (signed results)")
-local function toSigned(x) x = x % 4294967296; return x >= 2147483648 and x - 4294967296 or x end
-local function bitop(isAnd)
-    return function(a, b)
-        a, b = a % 4294967296, b % 4294967296
-        local r, p = 0, 1
-        for _ = 1, 32 do
-            local x, y = a % 2, b % 2
-            if (isAnd and x == 1 and y == 1) or (not isAnd and x ~= y) then r = r + p end
-            a, b, p = (a - x) / 2, (b - y) / 2, p * 2
-        end
-        return toSigned(r)
-    end
-end
-bit = { band = bitop(true), bxor = bitop(false) }
-ns = { addon = {} }
-assert(loadfile("Core/Crypto.lua"))("SawIt", ns)
-C = ns.addon.Crypto
-hex, unhex = C.hex, C.unhex
 run()
 
 print(fails == 0 and "\nALL PASSED" or ("\n" .. fails .. " FAILED"))
