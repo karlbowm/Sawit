@@ -75,20 +75,22 @@ local function newID() return b36(time()) .. ("000" .. b36(math.random(0, 46655)
 -- In: v  coordinate 0..1.  Out: integer 0..9999, as sent on the wire
 local function quantize(v) return math.max(0, math.min(9999, math.floor(v * 10000 + 0.5))) end
 
+-- Cuts s to at most max bytes without splitting a UTF-8 character: when the first byte that falls off is the middle
+-- of a character (a continuation byte, 0x80-0xBF), that whole character goes too. Also used for chat (POIMap).
+-- In: s  string;  max  bytes.  Out: string
+function POI.Truncate(s, max)
+    if #s <= max then return s end
+    local i = max + 1   -- first byte that falls off
+    while i > 1 and s:byte(i) >= 128 and s:byte(i) < 192 do i = i - 1 end
+    return s:sub(1, i - 1)
+end
+
 -- Makes text safe to store and show: control chars and '|' (WoW's escape character) become spaces, runs of spaces
--- collapse, and it is cut to max bytes without leaving half a UTF-8 character.
+-- collapse, and it is cut to max bytes (POI.Truncate).
 -- In:  s  anything (nil -> "");  max  bytes, default MAX_TEXT.  Out: string
 local function cleanText(s, max)
-    max = max or MAX_TEXT
     s = tostring(s or ""):gsub("[%c|]", " "):gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")
-    if #s <= max then return s end
-    s = s:sub(1, max)
-    -- the cut may fall inside a multi-byte character: drop back to before its first byte (this can also drop one
-    -- character that was complete, which is harmless)
-    local i = #s
-    while i > 0 and s:byte(i) >= 128 and s:byte(i) < 192 do i = i - 1 end
-    if i > 0 and s:byte(i) >= 192 then s = s:sub(1, i - 1) end
-    return s
+    return POI.Truncate(s, max or MAX_TEXT)
 end
 
 -- In: s  anything.  Out: cleaned title: like cleanText, also without '[' and ']', at most MAX_TITLE bytes

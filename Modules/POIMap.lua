@@ -65,17 +65,13 @@ function POIMap.InsertInChat(rec)
     if open then open(text) end
 end
 
--- Posts a note to guild chat: chat text, then the details, cut to the 255-byte chat limit.
+-- Posts a note to guild chat: chat text, then the details, cut to the 255-byte chat limit. The link comes first
+-- (~110 bytes), so only the details can get cut.
 -- In: rec
 function POIMap.ShareToGuild(rec)
     local msg = POIMap.ChatText(rec)
     local details = POI.Details(rec)
-    if details ~= "" then msg = msg .. " " .. details end
-    if #msg > 255 then   -- the link comes first (~110 bytes), so only the details get cut; keep UTF-8 characters whole
-        local i = 256
-        while i > 1 and msg:byte(i) >= 128 and msg:byte(i) < 192 do i = i - 1 end
-        msg = msg:sub(1, i - 1)
-    end
+    if details ~= "" then msg = POI.Truncate(msg .. " " .. details, 255) end
     local send = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
     send(msg, "GUILD")
 end

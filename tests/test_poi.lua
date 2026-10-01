@@ -118,6 +118,14 @@ P:SlashCommand("edit " .. tid .. " Mother Fang the Elder")
 check(P:Get(tid).title == "Mother Fang the Elder" and P:Get(tid).text == "near the cave", "/sawit edit <id> <title> keeps the details")
 P:SlashCommand("edit " .. tid .. " rare Mother Fang; by the lake")
 check(P:Get(tid).title == "Mother Fang" and P:Get(tid).text == "by the lake", "/sawit edit <id> [cat] <title>; <details> sets both")
+local e = "\195\169"   -- "é", 2 bytes
+check(P.Truncate(("a"):rep(118) .. e .. "b", 120) == ("a"):rep(118) .. e, "cut right after a 2-byte character keeps it")
+check(P.Truncate(("a"):rep(119) .. e, 120) == ("a"):rep(119), "cut inside a 2-byte character drops all of it")
+check(P.Truncate("short", 120) == "short" and P.Truncate(("\226\130\172"):rep(3), 7) == ("\226\130\172"):rep(2),
+    "short text unchanged; 3-byte characters cut whole")
+local uid = P:Create(("a"):rep(118) .. e .. "b", "other", 1429, 0.6, 0.6, "utf8")
+check(P:Get(uid).text == ("a"):rep(118) .. e, "note text keeps a complete character that ends at the limit")
+P:Remove(uid)
 check(pcall(P.SlashCommand, P, "edit") and pcall(P.SlashCommand, P, "edit   "), "/sawit edit without arguments doesn't error")
 check(P.Details({ title = "T", text = "d" }) == "d" and P.Details({ title = "", text = "short" }) == ""
     and P.Details({ title = "", text = ("x"):rep(60) }) == ("x"):rep(60), "Details: text under a title; untitled only when cut")
