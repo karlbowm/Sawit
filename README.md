@@ -265,6 +265,9 @@ What it does not:
 - **Relayed sync records cannot be verified.** In `R` messages the sender is the peer relaying, not the author, so
   `updatedBy` is a claim. A modified client *with the guild secret* could therefore forge a record "by" an officer during
   sync. Fixing that needs per-player signatures, which a shared secret cannot provide.
+- **Connected realms are not handled.** Names are stored without realm; a guildmate from another realm would have
+  their live edits rejected (notes still arrive through sync) and wouldn't count as an officer. Details and the fix
+  in `TODO.md` section 7.
 - Tombstones are kept 180 days. A member offline for longer than that could resurrect a deleted note.
 - `rev` is wall-clock based; revs more than 24 h ahead of the receiver's clock are rejected.
 - Two notes at the same 4-digit coordinate share one map pin (tooltip lists all, pin shows a count).

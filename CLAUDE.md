@@ -106,6 +106,9 @@ Internal messages (AceEvent, in-process only):
 | `SAWIT_SHARING_CHANGED` (on) | Positions:SetSharing | MinimapButton (ring) |
 | `SAWIT_SECRET_CHANGED` | Core (set/clear secret) | POI (sync hello), MinimapButton (ring) |
 
+Known cross-file limitation: player names are stored without realm but compared with `GA:Normalize` (realm kept for
+other realms), so connected-realm guildmates aren't handled; see `TODO.md` section 7 before touching name handling.
+
 ## Formats (details in README and file headers)
 
 - **Note record:** `id, rev, author, updatedBy, mapID, x, y, text (<=120), cat, deleted, title (<=40)`.

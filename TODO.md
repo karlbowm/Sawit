@@ -103,8 +103,14 @@ SawIt version.
 - [ ] **Messaging lockdown.** When `C_ChatInfo.InChatMessagingLockdown()` turns on (combat, encounters). Messages
       dropped then should be recovered by the next sync.
 - [ ] **Secret values.** Whether received text or sender names ever arrive as secret values (`issecretvalue` guards).
-- [ ] **Connected realms.** For guildmates on another realm, sender names match (the encryption binds the name without
-      realm) and the roster check accepts them.
+- [ ] **Connected realms (known limitation, decide after checking).** Find out whether Forever guilds can have members
+      from another (connected) realm: `/dump GetGuildRosterInfo(1)` shows "Name-Realm" for them. If they can:
+      authors and `updatedBy` are stored as `UnitName("player")` (no realm), but POI's live check compares them with
+      `GA:Normalize(sender)`, which keeps the realm for other-realm players, and `GA:IsOfficer` looks the realm-less
+      name up in a roster keyed with realms. So a cross-realm guildmate's live edits are rejected (their notes only
+      arrive through sync relays) and cross-realm officers aren't treated as officers. Fix: one name format
+      everywhere ("Name-Realm" for storage, roster and checks). The encryption is unaffected (it binds the name
+      without realm on both ends).
 
 ## 8. Before sharing the addon
 
