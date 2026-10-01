@@ -15,6 +15,7 @@ GA.SecretDialog = Dialog
 local FRAME_NAME = "SawItSecretDialog"
 local frame
 
+-- Shows the guild, whether a secret is set (with its check code), and enables Remove only when one is.
 local function refresh()
     local check = GA:GuildSecretCheck()
     frame.guild:SetText(GA:GetGuildName() or "")
@@ -23,18 +24,18 @@ local function refresh()
     frame.removeButton:SetEnabled(check ~= nil)
 end
 
+-- Save button / Enter: sets the secret and closes the window, or shows why not (e.g. too short).
 local function save()
-    local text = frame.edit:GetText()
-    local check, why = GA:SetGuildSecret(text)
+    local check, why = GA:SetGuildSecret(frame.edit:GetText())
     if not check then
         frame.error:SetText("|cffff4040" .. tostring(why) .. "|r")
         return
     end
-    frame.edit:SetText("")
     GA:Print(("Guild secret saved. Check code |cffffffff%s|r - guildmates with the same secret see the same code."):format(check))
     frame:Hide()
 end
 
+-- Out: the window frame (built once, on first open)
 local function build()
     local f = CreateFrame("Frame", FRAME_NAME, UIParent)
     f:SetSize(360, 196)
@@ -109,10 +110,11 @@ local function build()
     end)
     f.removeButton:SetPoint("LEFT", f.generateButton, "RIGHT", 6, 0)
 
-    f:SetScript("OnHide", function() f.edit:SetText(""); f.edit:ClearFocus() end)
+    f:SetScript("OnHide", function() f.edit:SetText(""); f.edit:ClearFocus() end)   -- the secret never stays on screen
     return f
 end
 
+-- /sawit secret: opens the window (not in test mode, and only in a guild).
 function Dialog:Open()
     if GA:IsTestMode() then return GA:Print("Test mode is local only; the guild secret is not used (GA.TEST_MODE in Core/Core.lua).") end
     if not GA:GetGuildName() then return GA:Print("You need to be in a guild to set its secret.") end

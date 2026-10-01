@@ -237,6 +237,7 @@ check(generated:match("^%w+%-%w+%-%w+%-%w+$"), "Generate fills in a random secre
 sd.edit:SetText("  correct horse battery staple  ")
 sd.saveButton:Click()
 check(not sd:IsShown() and GA:NetContext() ~= nil and GA:GuildSecretCheck():match("^%x%x%x%-%x%x%x$"), "Save sets the secret and a check code")
+check(sd.edit:GetText() == "", "the secret doesn't stay in the window after Save")
 check(GA.db.global.netKeys["AZB-Realm"] and not tostring(GA.db.global.netKeys["AZB-Realm"].key):find("horse"), "stored per guild as the derived key, not the text")
 check(ringColor() == "green", "sharing on in a guild with a secret: green ring")
 
@@ -269,6 +270,11 @@ local key = GA.db.global.netKeys["AZB-Realm"]
 GA:SetGuildSecret("a different secret")
 GA.Comm:OnData("GAtlasD", msg.text, "GUILD", "Bob")
 check(got == nil and st.unreadable == before[2] + 3, "wrong secret: message unreadable")
+GA.db.global.netKeys["AZB-Realm"] = key
+GA:SlashCommand("secret")
+sd.removeButton:Click()
+check(GA:NetContext() == nil and sd.status:GetText():find("not set", 1, true), "Remove clears the secret and says so")
+sd:Hide()
 GA.db.global.netKeys["AZB-Realm"] = key
 local pos = sealAs("Dora", function() GA.Comm:SendRaw(GA.Positions.Encode(1429, 0.5, 0.5)) end)
 check(pos and pos.prefix == "GAtlasP" and pos.text:sub(1, 1) == "E" and #pos.text < 255, "position packet goes out sealed (" .. #pos.text .. " bytes)")
