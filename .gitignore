@@ -1,0 +1,6 @@
+# editor / OS leftovers
+*~
+*.swp
+*.bak
+.DS_Store
+Thumbs.db

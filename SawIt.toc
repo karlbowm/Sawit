@@ -1,0 +1,32 @@
+## Interface: 16001
+## Title: SawIt
+## Notes: Shared Atlas Worldwide Information Tracker - guild notes and live guildmate locations on the map.
+## Author: Marcus K.
+## Version: 0.1.0
+## IconTexture: Interface\AddOns\SawIt\Media\icon
+## Category: Map
+## X-Curse-Project-ID: 999999
+## SavedVariables: SawItDB
+## SavedVariablesPerCharacter:
+## OptionalDeps: TomTom
+
+# Interface 16001 matches the installed build 1.60.1.70124 (see NOTES-client-research.md).
+# Re-check after client patches: /run print((select(4, GetBuildInfo())))
+#
+# Notes and guildmates are drawn on the world map and minimap by the addon itself (HereBeDragons-Pins).
+# TomTom is an optional separate addon for Ctrl-click waypoints; without it they use WoW's own map pin.
+
+embeds.xml
+
+# Core creates the addon object. Modules are enabled in creation order, so Comm must come before
+# the modules that use it, and POI before POIMap and NoteDialog (which read GA.POI at load time).
+Core\Core.lua
+Core\Crypto.lua
+Core\Comm.lua
+Modules\POI.lua
+Modules\POIMap.lua
+Modules\Positions.lua
+Modules\NoteDialog.lua
+Modules\DeleteDialog.lua
+Modules\SecretDialog.lua
+Modules\MinimapButton.lua
