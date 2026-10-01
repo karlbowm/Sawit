@@ -434,6 +434,38 @@ check(pw and pm and pw ~= pm, "guildmate dot: separate world-map and minimap fra
 GA.Positions:OnPacket("Bob", "0")
 check(count(drawn.world) == count(drawn.world, NOTES) and count(drawn.mini) == count(drawn.mini, NOTES), "stop packet removes both dot frames")
 
+-- expiry: a dot disappears after `expire` seconds without a packet
+GA.Positions:OnPacket("Finn", "10142945216033")
+now = now + 20; GA.Positions:Expire()
+check(GA.Positions.players.Finn ~= nil, "dot stays while packets are recent")
+now = now + 11; GA.Positions:Expire()
+check(GA.Positions.players.Finn == nil and count(drawn.world) == count(drawn.world, NOTES), "dot expires after 30 s of silence")
+local realInfo = C_Map.GetMapInfo
+C_Map.GetMapInfo = function(id) if id ~= 99999 then return realInfo(id) end end   -- 99999: no such map
+GA.Positions:OnPacket("Finn", "19999900000000")
+C_Map.GetMapInfo = realInfo
+check(GA.Positions.players.Finn == nil, "packet for an unknown map is ignored")
+
+-- send policy: on move, as keepalive, never while hidden
+local rawSent, realRaw = {}, GA.Comm.SendRaw
+GA.Comm.SendRaw = function(_, pkt) rawSent[#rawSent + 1] = pkt; return true end
+GA.db.profile.positions.share, GA.Positions.last = true, nil
+GA.Positions:Tick()
+check(#rawSent == 1 and rawSent[1] == "10142942316512", "first tick sends the position: " .. tostring(rawSent[1]))
+now = now + 5; GA.Positions:Tick()
+check(#rawSent == 1, "standing still: nothing sent before the keepalive")
+now = now + 8; GA.Positions:Tick()
+check(#rawSent == 2, "standing still: resent after the 12 s keepalive")
+C_Map.GetPlayerMapPosition = function() return CreateVector2D(0.4300, 0.6512) end
+UnitAffectingCombat = function() return true end
+GA.Positions:Tick()
+check(#rawSent == 2, "in combat: nothing sent")
+UnitAffectingCombat = function() return false end
+GA.Positions:Tick()
+check(#rawSent == 3 and rawSent[3] == "10142943006512", "moved: sent at once")
+C_Map.GetPlayerMapPosition = function() return CreateVector2D(0.4231, 0.6512) end
+GA.Comm.SendRaw, GA.db.profile.positions.share, GA.Positions.last = realRaw, false, nil
+
 -- Shift+right-click on the world map opens the note window at the clicked spot
 local handler = WorldMapFrame.clickHandlers[1]
 check(#WorldMapFrame.clickHandlers == 1 and handler.priority == 80, "world map click handler registered once (priority 80)")
