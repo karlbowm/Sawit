@@ -49,6 +49,13 @@ by that note; the in-game limits (message size, throttle, lockdown timing) still
   green = sharing on and sent, orange = on but blocked (test mode / no guild), hidden = off. State from
   `Positions:SharingState()`, updated on the `SAWIT_SHARING_CHANGED` / `SAWIT_SECRET_CHANGED` messages and on login/guild change. Anchored to the
   LibDBIcon icon, not the button, because LibDBIcon's layout depends on the unverified WOW_PROJECT_ID.
+- **Code review pass** (2026-10-01): every Core and Modules file has In/Out comments per function. Cross-file:
+  shared window builder (`Core/UI.lua`), HereBeDragons-Pins required (no nil checks), internal messages renamed to
+  `SAWIT_*` (table in CLAUDE.md), one exact UTF-8 cut (`POI.Truncate`), three unreachable settings removed, `Utils.lua`
+  deleted. Bugs fixed on the way: `POI:Apply` threw on non-table payloads (aborting a sync batch), `/sawit edit` without
+  arguments errored, a delete-window row of a note deleted meanwhile lost its title, the old UTF-8 cut dropped a
+  complete character at the limit, untitled long notes were cut off in tooltips. Known, not fixed: connected realms
+  (TODO.md section 7).
 - **Crypto primitives from a library** (2026-10-01): our own SHA-256/HMAC (and the bit-op code) were replaced by
   LibHash-1.0 (`Libs/LibHash-1.0`, unmodified, loaded from `embeds.xml`). Output is byte-identical (same Python
   vectors). Cost in plain Lua: key derivation 0.76 -> 0.99 s, a 2 KB sync message ~120 -> ~140 ms. LibHash never uses
