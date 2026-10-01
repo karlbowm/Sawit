@@ -362,6 +362,21 @@ shiftDown = false
 check(opened == "[Rare spawn: Mother Fang] " .. PIN_LINK, "shift-click with no chat box open opens one with the link")
 ChatEdit_InsertLink, ChatFrame_OpenChat = nil, nil
 
+-- Ctrl-click: TomTom waypoint if installed, else WoW's map pin
+local tt
+TomTom = { AddWaypoint = function(_, map, x, y, opts) tt = { map, x, y, opts.title } end }
+IsControlKeyDown = function() return true end
+wIcon.scripts.OnClick(wIcon, "LeftButton")
+check(tt and tt[1] == 1429 and tt[2] == 0.4231 and tt[4] == "Mother Fang" and sent == nil, "ctrl-click with TomTom: TomTom waypoint")
+TomTom = nil
+local pinned
+C_Map.SetUserWaypoint = function(point) pinned = point end
+wIcon.scripts.OnClick(wIcon, "LeftButton")
+check(pinned ~= nil and sent == nil, "ctrl-click without TomTom: WoW's map pin is placed")
+C_Map.SetUserWaypoint = function() error("no pins on this map") end
+check(pcall(wIcon.scripts.OnClick, wIcon, "LeftButton"), "a map that refuses pins doesn't raise an error")
+C_Map.SetUserWaypoint, IsControlKeyDown = nil, function() return false end
+
 -- second note at the same spot shares the pin
 GA.POI:Create("second note", "quest", 1429, 0.4231, 0.6512)
 GA.POIMap:Redraw()
