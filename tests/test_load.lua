@@ -535,10 +535,13 @@ check(not dd:IsShown() and GA.POI:Get(fromMap.id) and not GA.POI:Get(fromMap.id)
 local pair = pinOf(r.id)
 pair.scripts.OnClick(pair, "RightButton")
 check(dd:IsShown() and shownRows() == 2 and dd.title:GetText() == "Delete which note?", "pin with two of your notes lists both")
-local firstId = del._listed[1].id
+local firstId, second = del._listed[1].id, del._listed[2]
+GA.POI:Get(second.id).deleted = true   -- as if a sync deleted it while the window is open
 del._rows[1].button:Click()
 check(GA.POI:Get(firstId).deleted and dd:IsShown() and shownRows() == 1 and del._listed[1].id ~= firstId,
     "Delete removes that note only; the other stays listed")
+check(del._rows[1].text:GetText() == second.label, "a row whose note was deleted meanwhile still shows its title")
+GA.POI:Get(second.id).deleted = nil
 local lastId = del._listed[1].id
 del._rows[1].button:Click()
 check(GA.POI:Get(lastId).deleted and not dd:IsShown(), "deleting the last listed note closes the window")
