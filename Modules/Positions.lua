@@ -140,27 +140,18 @@ local function newDot()
     return f
 end
 
--- Puts a player's two dots on the maps (or takes them off, if a map's dots are switched off), in class colour.
+-- Puts (or moves) a player's two dots on the maps, in class colour. The world-map dot also shows on continent maps;
+-- the minimap dot floats at the edge when the player is out of range.
 -- In: name, e  the player's entry
 local function draw(name, e)
-    local pins = GA.HBDPins
     local r = GA.roster[name]
     local c = r and RAID_CLASS_COLORS[r.class] or WHITE
     for _, f in ipairs({ e.world, e.mini }) do
         f.player = name
         f.fill:SetVertexColor(c.r, c.g, c.b, 1)
     end
-    local p = GA.db.profile.positions
-    if p.showWorldMap then
-        pins:AddWorldMapIconMap(REF, e.world, e.map, e.x, e.y, HBD_PINS_WORLDMAP_SHOW_CONTINENT)
-    else
-        pins:RemoveWorldMapIcon(REF, e.world)
-    end
-    if p.showMinimap then
-        pins:AddMinimapIconMap(REF, e.mini, e.map, e.x, e.y, false, true)
-    else
-        pins:RemoveMinimapIcon(REF, e.mini)
-    end
+    GA.HBDPins:AddWorldMapIconMap(REF, e.world, e.map, e.x, e.y, HBD_PINS_WORLDMAP_SHOW_CONTINENT)
+    GA.HBDPins:AddMinimapIconMap(REF, e.mini, e.map, e.x, e.y, false, true)
 end
 
 -- Redraws every dot, e.g. when class colours arrive with the roster.

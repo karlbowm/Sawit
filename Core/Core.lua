@@ -33,8 +33,7 @@ local defaults = {
     profile = {
         minimap = { hide = false }, -- LibDBIcon button position/visibility (Modules/MinimapButton.lua)
         comm = {
-            compress = true,        -- deflate data messages over 80 bytes (Comm.lua)
-            debug = false,
+            debug = false,          -- /sawit debug
         },
         poi = {
             officerRankIndex = 1, -- guild rank indexes 0..this may moderate others' notes (0 = guild master)
@@ -46,8 +45,6 @@ local defaults = {
             share = false,    -- opt-in: nothing is broadcast until the player turns this on
             hideInCombat = true,
             hideInPvP = true, -- battlegrounds / arenas
-            showWorldMap = true,
-            showMinimap = true,
             baseInterval = 4, -- seconds between position checks (adaptive, see Positions.lua)
             keepalive = 12,   -- resend an unchanged position this often so stationary players don't expire
             expire = 30,      -- receivers drop an entry after this many seconds of silence

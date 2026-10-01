@@ -61,7 +61,7 @@ Vendored unmodified in `GuildAtlas/Libs/` (and the HBD/LibStub subset in `GuildA
 | AceAddon, AceEvent, AceConsole, AceDB | Ace3 `a360495` | addon object, events, slash, SavedVariables |
 | AceComm-3.0 + ChatThrottleLib | Ace3 `a360495` | throttled sending, multi-part split/reassembly |
 | AceSerializer-3.0 | Ace3 `a360495` | POI payload serialization |
-| LibDeflate | SafeteeWoW/LibDeflate `afc3b78` | optional compression of data messages |
+| LibDeflate | SafeteeWoW/LibDeflate `afc3b78` | compression of data messages over 80 bytes, and the addon-channel encoding of sealed messages |
 | HereBeDragons-2.0, -Pins-2.0 | Nevcairiel/HereBeDragons `0547c95` (MINOR 33) | coordinates and map/minimap icons |
 | LibHash-1.0 | CurseForge project 383484, file 1.0.0 (2020-05-14), port of Egor Skriptunoff's pure_lua_SHA v9, MIT | SHA-256 and HMAC for the guild secret (`Core/Crypto.lua`) |
 

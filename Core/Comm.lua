@@ -117,7 +117,7 @@ function Comm:Send(msgType, payload, channel, target, prio)
     if not ctx then return false end
     local s = AceSerializer:Serialize(self.PROTO, msgType, payload)
     local inner = "0" .. s
-    if GA.db.profile.comm.compress and #s > 80 then   -- small messages don't shrink
+    if #s > 80 then   -- small messages don't shrink
         local c = LibDeflate:CompressDeflate(s)
         if #c < #s then inner = "1" .. c end
     end
