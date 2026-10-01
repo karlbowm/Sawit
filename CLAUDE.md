@@ -42,7 +42,6 @@ Modules/SecretDialog.lua /sawit secret window (enter, Generate, Remove, check co
 Modules/MinimapButton.lua LDB/LibDBIcon button, sharing ring (green sent / orange blocked / hidden off)
 Media/                   icon.tga (AZB), ring.tga (minimap ring), circle.tga (pin mask), pinring.tga (black-edged pin ring)
 tests/                   offline tests, see below
-Utils.lua                stray one-liner, not in the .toc (unused)
 ```
 
 ## Running the tests (always, after any change)
