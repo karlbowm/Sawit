@@ -310,7 +310,7 @@ end
 -- AceAddon callback: world map setup, and redraws on note changes and once the guild is known.
 function POIMap:OnEnable()
     self:SetupWorldMap()
-    self:RegisterMessage("GUILDATLAS_POI_CHANGED", "Refresh")
+    self:RegisterMessage("SAWIT_NOTES_CHANGED", "Refresh")
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "Refresh")   -- the guild (and so its notes) is only known after login
     self:RegisterEvent("PLAYER_GUILD_UPDATE", "Refresh")
 end

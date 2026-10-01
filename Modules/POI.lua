@@ -227,7 +227,7 @@ function POI:CanModify(rec)
     return rec ~= nil and not rec.deleted and (rec.author == GA.playerName or GA:IsOfficer(GA.playerName))
 end
 
--- Stores a record if it is valid, newer than ours and allowed, then sends GUILDATLAS_POI_CHANGED (the map redraws).
+-- Stores a record if it is valid, newer than ours and allowed, then sends SAWIT_NOTES_CHANGED (the map redraws).
 -- In:  packed  wire form (from a message, or pack() of our own new revision)
 --      sender  who delivered it
 --      live    true for live updates and our own edits: the sender must be the record's updatedBy.
@@ -244,7 +244,7 @@ function POI:Apply(packed, sender, live)
     local ok, reason = mayWrite(rec, existing)
     if not ok then return false, reason end
     store[rec.id] = rec
-    self:SendMessage("GUILDATLAS_POI_CHANGED", rec.id)
+    self:SendMessage("SAWIT_NOTES_CHANGED", rec.id)
     return true
 end
 
@@ -438,7 +438,7 @@ function POI:OnEnable()
     comm:RegisterHandler("Q", function(s, p) self:OnRequest(s, p) end)
     comm:RegisterHandler("R", function(s, p) self:OnRecords(s, p) end)
     -- secret entered or changed: sync with the guildmates who share it
-    self:RegisterMessage("SAWIT_GUILD_SECRET_CHANGED", function() self:SendHello() end)
+    self:RegisterMessage("SAWIT_SECRET_CHANGED", function() self:SendHello() end)
     self:RegisterEvent("PLAYER_ENTERING_WORLD", function()
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
         self:ScheduleHello()

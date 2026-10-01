@@ -9,7 +9,8 @@
   (`/guildatlas`, `/gatlas` kept as aliases), minimap module moved to `Modules/MinimapButton.lua` (LDB/LibDBIcon name `SawIt`).
 - Frame/pin names: `SawItNoteDialog`, HBD ref `SawItNotes`. Texture paths `Interface\AddOns\SawIt\Media\...`.
 - Unchanged on purpose: comm prefixes `GAtlasD`/`GAtlasP` and PROTO 1 (invisible to players; changing them only breaks
-  compatibility), internal message names `GUILDATLAS_*`. Everything below written before the rename says MarcusAddon.
+  compatibility). Internal AceEvent messages were renamed to `SAWIT_*` on 2026-10-01 (they never leave the client, so that was
+  safe; see CLAUDE.md for the list). Everything below written before the rename says MarcusAddon.
 
 ## Client research (2026-09-30): see NOTES-client-research.md
 WoW Forever = game type `camelot`, build 1.60.1.70124, Interface 16001 (confirmed from the build number). It runs the
@@ -46,7 +47,7 @@ by that note; the in-game limits (message size, throttle, lockdown timing) still
   these, never `IsInGuild()` or the flag directly.
 - **Sharing ring on the minimap button** (`Modules/MinimapButton.lua`, texture `Media/ring.tga`, generated white ring tinted in code):
   green = sharing on and sent, orange = on but blocked (test mode / no guild), hidden = off. State from
-  `Positions:SharingState()`, updated on the `GUILDATLAS_SHARING_CHANGED` message and on login/guild change. Anchored to the
+  `Positions:SharingState()`, updated on the `SAWIT_SHARING_CHANGED` / `SAWIT_SECRET_CHANGED` messages and on login/guild change. Anchored to the
   LibDBIcon icon, not the button, because LibDBIcon's layout depends on the unverified WOW_PROJECT_ID.
 - **Crypto primitives from a library** (2026-10-01): our own SHA-256/HMAC (and the bit-op code) were replaced by
   LibHash-1.0 (`Libs/LibHash-1.0`, unmodified, loaded from `embeds.xml`). Output is byte-identical (same Python

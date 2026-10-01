@@ -85,10 +85,11 @@ function Button:OnInitialize()
     icon:Register("SawIt", dataObject, GA.db.profile.minimap)
 end
 
--- AceAddon callback: keeps the ring up to date.
+-- AceAddon callback: keeps the ring up to date. Green vs orange depends on sharing being on and on whether
+-- anything can be sent (guild, guild secret), so it is redrawn when any of those change.
 function Button:OnEnable()
-    self:RegisterMessage("GUILDATLAS_SHARING_CHANGED", "UpdateRing")
-    -- guild membership decides green vs orange; it is only known after login and can change
+    self:RegisterMessage("SAWIT_SHARING_CHANGED", "UpdateRing")
+    self:RegisterMessage("SAWIT_SECRET_CHANGED", "UpdateRing")
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "UpdateRing")
     self:RegisterEvent("PLAYER_GUILD_UPDATE", "UpdateRing")
     self:UpdateRing()

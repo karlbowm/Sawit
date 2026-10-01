@@ -87,6 +87,26 @@ Test-harness quirks:
   Pure logic stays WoW-API-free where possible so `test_poi`/`test_crypto` can load it.
 - Adding a file: add it to `SawIt.toc` in dependency order and to the README layout list.
 
+## How the files work together
+
+Dependencies point downwards; nothing in Core depends on a module at load time.
+```
+Core (state, guild secret, roster, /sawit)   Crypto (pure)   UI (window builders)
+  └─ Comm (sealed transport, two prefixes)
+       ├─ POI (note data, sync, note commands) ──calls──> POIMap setters (filter/map/minimap commands)
+       │    └─ POIMap (pins, pin actions, map button)   NoteDialog   DeleteDialog
+       └─ Positions (location packets, dots) ──calls──> POIMap.WaypointTo (dot click)
+SecretDialog -> Core secret functions          MinimapButton -> Positions, POI, NoteDialog
+```
+Internal messages (AceEvent, in-process only):
+
+| Message | Sent by | Listened to by |
+|---|---|---|
+| `SAWIT_NOTES_CHANGED` (id) | POI:Apply | POIMap (redraw) |
+| `SAWIT_ROSTER_UPDATED` | Core:RosterEvent | Positions (class colours) |
+| `SAWIT_SHARING_CHANGED` (on) | Positions:SetSharing | MinimapButton (ring) |
+| `SAWIT_SECRET_CHANGED` | Core (set/clear secret) | POI (sync hello), MinimapButton (ring) |
+
 ## Formats (details in README and file headers)
 
 - **Note record:** `id, rev, author, updatedBy, mapID, x, y, text (<=120), cat, deleted, title (<=40)`.

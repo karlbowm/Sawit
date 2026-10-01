@@ -66,7 +66,7 @@ function Pos:SetSharing(on)
         msg = blocked and ("ON, but nothing is sent: " .. blocked) or "ON - guildmates running SawIt can see you on their map."
     end
     GA:Print("Location sharing " .. msg)
-    self:SendMessage("GUILDATLAS_SHARING_CHANGED", on)
+    self:SendMessage("SAWIT_SHARING_CHANGED", on)
 end
 
 -- Out: "sent" (on, and messages go out) | "blocked" (on, but test mode, no guild or no guild secret) | "off"
@@ -222,7 +222,7 @@ end
 -- AceAddon callback: packet handler, roster colours, expiry ticker, and the first send check after 10 s.
 function Pos:OnEnable()
     GA.Comm:RegisterRawHandler(function(sender, text) self:OnPacket(sender, text) end)
-    self:RegisterMessage("GUILDATLAS_ROSTER_UPDATED", "RefreshAllIcons")   -- class colours arrive with the roster
+    self:RegisterMessage("SAWIT_ROSTER_UPDATED", "RefreshAllIcons")   -- class colours arrive with the roster
     C_Timer.NewTicker(5, function() self:Expire() end)
     C_Timer.After(10, function() self:Tick() end)
 end

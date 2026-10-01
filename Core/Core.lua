@@ -201,10 +201,7 @@ function GA:GuildSecretCheck()
 end
 
 -- Tells the modules the secret changed: POI syncs, the minimap ring recolours.
-local function secretChanged(self)
-    self:SendMessage("SAWIT_GUILD_SECRET_CHANGED")
-    self:SendMessage("GUILDATLAS_SHARING_CHANGED", self.db.profile.positions.share)
-end
+local function secretChanged(self) self:SendMessage("SAWIT_SECRET_CHANGED") end
 
 -- Sets the current guild's secret. Takes a moment: the key derivation is deliberately slow.
 -- In:  text  the secret; surrounding spaces are ignored
@@ -247,7 +244,7 @@ function GA:RequestRoster()
     if f then f() end
 end
 
--- GUILD_ROSTER_UPDATE: rebuilds self.roster and self.onlineCount, then sends GUILDATLAS_ROSTER_UPDATED.
+-- GUILD_ROSTER_UPDATE: rebuilds self.roster and self.onlineCount, then sends SAWIT_ROSTER_UPDATED.
 -- The first time the roster is known and no secret is set, tells the player once how to set it.
 function GA:RosterEvent()
     local roster, online = {}, 0
@@ -266,7 +263,7 @@ function GA:RosterEvent()
         self.warnedNoSecret = true
         self:Print("No guild secret set: notes and locations are not shared with your guild. Type /sawit secret to enter it.")
     end
-    self:SendMessage("GUILDATLAS_ROSTER_UPDATED")
+    self:SendMessage("SAWIT_ROSTER_UPDATED")
 end
 
 -- In:  name  any player name format
