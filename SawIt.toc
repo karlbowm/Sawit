@@ -2,7 +2,7 @@
 ## Title: SawIt
 ## Notes: Shared Atlas Worldwide Information Tracker - guild notes and live guildmate locations on the map.
 ## Author: Marcus K.
-## Version: 0.1.0
+## Version: 0.2.0
 ## IconTexture: Interface\AddOns\SawIt\Media\icon
 ## Category: Map
 ## X-Curse-Project-ID: 999999

@@ -49,6 +49,20 @@ by that note; the in-game limits (message size, throttle, lockdown timing) still
   green = sharing on and sent, orange = on but blocked (test mode / no guild), hidden = off. State from
   `Positions:SharingState()`, updated on the `SAWIT_SHARING_CHANGED` / `SAWIT_SECRET_CHANGED` messages and on login/guild change. Anchored to the
   LibDBIcon icon, not the button, because LibDBIcon's layout depends on the unverified WOW_PROJECT_ID.
+- **Guild mode on, sync diagnostics** (2026-11-05): `GA.TEST_MODE = false`. First in-game report: notes from a
+  guildmate don't show up. No protocol bug found offline; diagnostics added instead. `Comm` counts and debug-logs
+  each receive drop reason (`notMember`, `rateLimited`, no secret), logs `rx` lines, and counts addon messages the
+  client refuses (AceComm send callback, `SendAddonMessageResult` name). `/sawit status` shows sent/received/refused,
+  lockdown, the drop counts, and how many notes sit in the test-mode store (never shared). Triage steps: TODO.md
+  section 1, "Notes from a guildmate don't arrive".
+  Second report the same day: same secret, but each side counts the other's messages as unreadable (seal fails).
+  Changes: (1) wire encoding `EncodeForWoWAddonChannel` (raw bytes 1-255) -> `EncodeForPrint` (a-z A-Z 0-9 ( ), +33 %),
+  markers "2"/"E" -> "3"/"F"; old markers are counted as `oldFormat` ("older SawIt"). Suspected, not proven, that the
+  server changes raw bytes. (2) Own GUILD messages that come back are compared with what we sent (`echoOK`/
+  `echoChanged` in status), which tests the transport from one client. (3) `/sawit debug` logs every raw message as hex
+  to `SawItDB.global.debugLog`; `tools/analyse_log.lua` replays it offline with the stored key and says per message:
+  opens / other sender name / right key but bytes changed / wrong key. (4) Fixed my own diagnostic from the first
+  pass: AceComm's send callback gets CTL's didSend boolean, not the result enum, so `sendFail` counts `false`.
 - **Code review pass** (2026-10-01): every Core and Modules file has In/Out comments per function. Cross-file:
   shared window builder (`Core/UI.lua`), HereBeDragons-Pins required (no nil checks), internal messages renamed to
   `SAWIT_*` (table in CLAUDE.md), one exact UTF-8 cut (`POI.Truncate`), three unreachable settings removed, `Utils.lua`

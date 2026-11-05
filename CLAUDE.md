@@ -42,6 +42,7 @@ Modules/SecretDialog.lua /sawit secret window (enter, Generate, Remove, check co
 Modules/MinimapButton.lua LDB/LibDBIcon button, sharing ring (green sent / orange blocked / hidden off)
 Media/                   icon.tga (AZB), ring.tga (minimap ring), circle.tga (pin mask), pinring.tga (black-edged pin ring)
 tests/                   offline tests, see below
+tools/analyse_log.lua    replays the /sawit debug raw message log (SavedVariables) with the stored key, offline
 ```
 
 ## Running the tests (always, after any change)
@@ -53,7 +54,9 @@ lua5.1 tests/test_crypto.lua     # crypto (LibHash + our constructions) vs Pytho
 lua5.1 tests/test_poi.lua        # records, permissions, titles, 4-client sync convergence, position packet
 lua5.1 tests/test_load.lua       # loads every .toc file against stubbed WoW API; UI, clicks, commands, secret, round trip
 ```
-Every suite ends with `ALL PASSED`. `test_load` prints "note: GA.TEST_MODE is ON" while the flag is on; that's fine.
+To analyse real traffic: Marcus runs `/sawit debug`, reproduces, `/reload`s, then
+`lua5.1 tools/analyse_log.lua ../../../WTF/Account/PUFFSKI/SavedVariables/SawIt.lua` (uses the stored guild key).
+Every suite ends with `ALL PASSED`. `test_load` prints "note: GA.TEST_MODE is ON" if the flag is on.
 Test-harness quirks:
 - The stub `Frame` metatable returns a function for **any unset field**. Never keep state in a nilable field on a frame
   (e.g. `row.id = nil`); keep it in plain Lua tables.
@@ -117,9 +120,9 @@ other realms), so connected-realm guildmates aren't handled; see `TODO.md` secti
 - **Note record:** `id, rev, author, updatedBy, mapID, x, y, text (<=120), cat, deleted, title (<=40)`.
   - Wire form: a positional array; `title` is field 11, so old 10-field records are still accepted with an empty title.
   - Conflicts: highest `rev` wins, ties broken by `updatedBy`. Deletes are tombstones, kept 180 days.
-- **Data messages:** `"2" .. EncodeForWoWAddonChannel(Seal("D", "0"|"1" .. AceSerializer(PROTO=1, type, payload)))`,
+- **Data messages:** `"3" .. EncodeForPrint(Seal("D", "0"|"1" .. AceSerializer(PROTO=1, type, payload)))`,
   where `"1"` means deflated. Types: `U` live update, `H` hello, `G` digest, `Q` request, `R` records.
-- **Position packets:** `"E" .. EncodeForWoWAddonChannel(Seal("P", packet))`, where the packet is `"1"` + mapID(5) + x(4)
+- **Position packets:** `"F" .. EncodeForPrint(Seal("P", packet))`, where the packet is `"1"` + mapID(5) + x(4)
   + y(4), or `"0"` for "stopped sharing".
 - **Guild secret:** PBKDF2-HMAC-SHA256 (1000 rounds, salt `"SawIt guild secret v1|" .. guildName`) gives the master key,
   from which K_enc, K_mac and the check code are derived by HMAC labels. Stored in
@@ -128,13 +131,15 @@ other realms), so connected-realm guildmates aren't handled; see `TODO.md` secti
 ## Environment and research
 
 - Addon path: `.../World of Warcraft/_classic_beta_/Interface/AddOns/SawIt` (Proton prefix under Steam). Git repo
-  (local only, branch `main`, no remote). Commit only when Marcus asks; Libs/ are vendored and committed.
+  (branch `main`, remote `origin` = github.com/karlbowm/Sawit; releases tagged `vX.Y`, first `v0.2` on 2026-11-05;
+  keep `## Version` in SawIt.toc and `GA.VERSION` in step with the tag). Commit/push only when Marcus asks; Libs/ are
+  vendored and committed.
 - The client's own Lua (FrameXML) isn't extracted. To check whether an API or string exists, run
   `strings -n 5 ../../../WowB.exe | grep ...` (from this folder). The matching Blizzard UI source is
   [Gethe/wow-ui-source](https://github.com/Gethe/wow-ui-source), tag `1.60.1`, branch `forever`. For API docs:
   warcraft.wiki.gg.
-- **TEST_MODE** (`Core/Core.lua`) is currently `true` for solo testing. It pretends to be in guild "AZB Test", and nothing
-  is sent or read. It must be `false` for any network or guild-secret testing and before release.
+- **TEST_MODE** (`Core/Core.lua`) is `false` (guild mode, since 2026-11-05: real guild, sync and location sharing).
+  Setting it `true` pretends to be in guild "AZB Test" for solo testing; then nothing is sent or read.
 
 ## Open ideas (not built; offered to Marcus)
 

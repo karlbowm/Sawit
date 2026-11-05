@@ -88,11 +88,11 @@ only `11509`/`120100` etc.; embedded copies are not affected by that, the standa
 ### Full addon
 | Command | Does |
 |---|---|
-| `/sawit` (old aliases `/guildatlas`, `/gatlas`) `status` | version, guild, roster size, guild secret and check code, unreadable-message counts, TomTom, sharing state |
+| `/sawit` (old aliases `/guildatlas`, `/gatlas`) `status` | version, guild, roster size, guild secret and check code, messages sent/received/refused by the client, lockdown, ignored and unreadable-message counts, unshared test-mode notes, TomTom, sharing state |
 | `/sawit help` | lists all commands |
 | `/sawit secret` | window to enter, generate or remove the guild secret; shows the check code. `/sawit secret clear` removes it |
 | `/sawit share [on\|off]`, `pause` | location sharing is **opt-in and off by default** |
-| `/sawit debug` | toggles debug output |
+| `/sawit debug` | toggles debug output (`tx`/`rx` per message, and `drop <sender> <reason>` for every ignored one). Turning it on starts a fresh raw message log for `tools/analyse_log.lua` |
 | `/sawit add [category] <title>[; details]` | add a note at your current position (categories: `rare`, `grind`, `quest`, `other`), e.g. `/sawit add rare Mother Fang; near the cave`. Needs the word `add`, so a mistyped command never becomes a note |
 | Note pin clicks | Shift-click: put `[Category: Title] [Map Pin Location]` in the chat box (like an item link). Click: post it to guild chat. Ctrl-click: waypoint. Right-click: delete window for your own notes at that pin (any note for officers) |
 | `/sawit my [here]` | your own notes (the ones you can edit and delete), with their ids |
@@ -175,11 +175,21 @@ Write the results into the table below before we build step 4 and 5.
 - Priorities (ChatThrottleLib): `ALERT` live POI edits, `NORMAL` sync traffic, `BULK` positions. Each priority has its
   own queue, so positions never queue in front of POI data.
 
-### Data message (`GAtlasD`)
+### Wire envelope (both prefixes)
+```
+GAtlasD   "3" .. EncodeForPrint(Seal("D", <flag><body>))
+GAtlasP   "F" .. EncodeForPrint(Seal("P", <position packet>))
+```
+`EncodeForPrint` (LibDeflate) uses only `a-z A-Z 0-9 ( )`, 4 characters per 3 bytes. Until 2026-11-05 the sealed blob
+went out as raw bytes (`EncodeForWoWAddonChannel`, markers `"2"`/`"E"`). Two clients with the same secret then saw
+each other's messages as unreadable, so raw bytes are suspected not to survive this server. Messages with the old
+markers are counted as "older SawIt" and dropped.
+
+### Data message (`GAtlasD`, inside the seal)
 ```
 <flag><body>
   flag "0": body = AceSerializer:Serialize(PROTO, msgType, payload)
-  flag "1": body = EncodeForWoWAddonChannel(CompressDeflate(that string))
+  flag "1": body = CompressDeflate(that string)
 ```
 `PROTO` is currently **1**. A receiver drops anything whose PROTO differs and, if it is newer than its own, prints a
 one-time "update the addon" note. Flag "1" is only produced when it is actually smaller; a client without LibDeflate
@@ -299,7 +309,7 @@ The step-by-step in-game checklist for all of this is **`TODO.md`**.
 | Waypoint without TomTom | `C_Map.SetUserWaypoint` + `UiMapPoint` (replaces your own map pin), plus `C_SuperTrack.SetSuperTrackedUserWaypoint` to track it (skipped if missing). |
 | Note pins | Drawn by `Modules/POIMap.lua` with HereBeDragons-Pins (HandyNotes dropped). Round (mask texture), black-edged ring in the category colour, 22 px world map / 16 px minimap. Look and click behaviour untested in game. |
 | Dot rendering | Round class-colored dots with a black edge (`Media/circle.tga`). Combat-safe frame handling not done. |
-| Guild secret | Crypto verified offline against Python; key-derivation time on Save, sealing cost during sync, and the encoded messages on GUILD are untested in game. |
+| Guild secret | Crypto verified offline against Python; key-derivation time on Save and sealing cost during sync untested in game. Raw-byte messages were reported unreadable between two clients with the same secret (2026-11-05); the printable encoding is untested in game. `/sawit status` counts own GUILD messages that come back changed. |
 | Install path | `_classic_beta_` on this install (the client loads addons from there); may differ elsewhere. |
 
 ## Running the offline tests
@@ -308,6 +318,16 @@ lua5.1 tests/test_poi.lua     # POI records, permissions, sync, position packet
 lua5.1 tests/test_load.lua    # loads every file in .toc order with stubbed WoW API, fires login events
 lua5.1 tests/test_crypto.lua  # crypto (LibHash + our constructions) vs Python reference values
 ```
+
+### Analysing real addon traffic
+`/sawit debug` in game starts a log of every raw message sent and received (hex, in `SawItDB.global.debugLog`, last
+200 data messages and 40 position packets). After a `/reload`:
+```
+lua5.1 tools/analyse_log.lua ../../../WTF/Account/<ACCOUNT>/SavedVariables/SawIt.lua
+```
+It uses the guild key stored in that file. For each message it reports one of: opens; opens only under another
+sender name; right key but wrong tag (bytes changed on the way); wrong key. For own GUILD messages that came back
+from the server, it shows which bytes differ from what was sent.
 
 ## Layout
 ```
@@ -328,5 +348,6 @@ SawIt/
   Modules/DeleteDialog.lua delete window opened by right-clicking a note pin (your own notes; officers: any)
   Modules/MinimapButton.lua      minimap button module (LDB + LibDBIcon)
   tests/               offline tests (not loaded by the game)
+  tools/analyse_log.lua offline analysis of the /sawit debug message log (not loaded by the game)
   Utils.lua            not in the .toc, not loaded
 ```

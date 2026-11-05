@@ -3,7 +3,7 @@
 Everything below is written and passes the offline tests (`tests/`), but has **not run in a WoW client**.
 Tick items off as they are confirmed; write what you saw next to anything that fails.
 
-**Before starting:** set `GA.TEST_MODE = false` in `Core/Core.lua` and `/reload`. With test mode on, nothing is sent,
+**Before starting:** `GA.TEST_MODE` in `Core/Core.lua` is now `false` (2026-11-05); `/reload` after updating. With test mode on, nothing is sent,
 and `/sawit secret` refuses to open. For the network items you need **two characters in the same guild**, both on this
 SawIt version.
 
@@ -20,15 +20,33 @@ SawIt version.
       `KDF_ITER` without also changing the salt version.
 - [ ] **Check code.** Both characters enter the same secret. `/sawit status` shows the same check code (e.g. `6FA-40D`) on
       both.
+- [ ] **Notes from a guildmate don't arrive** (reported 2026-11-05: both added notes in the same guild, neither sees
+      the other's). On **both** characters, `/reload`, then `/sawit status` and compare:
+      - a `TEST MODE` line: that copy is still old (`GA.TEST_MODE = true`); it sends and reads nothing.
+      - "N note(s) from test mode": notes added in test mode are stored apart and are never shared. Add them again.
+      - "Guild secret: not set", or different check codes: set the same secret on both (`/sawit secret`).
+      - `roster=0`: the roster never loaded, so no sync hello goes out at login; `/sawit sync` sends one by hand.
+      - "refused by the client" (with a result name) or "locked down": the client blocks our addon messages.
+      - "not in the roster": the sender's name doesn't match the roster format (see section 7).
+      Then `/sawit debug` on both, `/sawit sync` on A: A should print `tx H`, B `rx H` then `tx G`, A `rx G`, `tx Q`/`tx R`,
+      and B `rx R`. The first side that misses a line is where it breaks; any `drop ... <reason>` line names the cause.
+      Result (2026-11-05): same secret on both, yet each side's status counts the other's messages as "wrong secret"
+      (unreadable: the seal doesn't open). Suspected: the server changes raw bytes, so the wire encoding is now
+      printable only (`EncodeForPrint`, markers "3"/"F"). Re-test with the new copy on **both** sides:
+      - [ ] check codes identical on both (`/sawit status`), not only the secret text.
+      - [ ] "Own messages back from the server: N unchanged, 0 changed".
+      - [ ] no "failed the seal" count; notes from the other side appear after `/sawit sync`.
+      - [ ] if not: `/sawit debug`, `/sawit sync`, wait ~20 s, `/reload`, then run `tools/analyse_log.lua` on the
+            SavedVariables (README, "Analysing real addon traffic"). Ask the guildmate for their `SawIt.lua` too.
 - [ ] **Notes sync.** Add a note on A. It appears on B within a second or two (live `U` message). `/reload` B; the notes
       are still there, and sync after login works (`/sawit sync`, `/sawit stats`).
 - [ ] **Positions.** `/sawit share on` on A (the minimap ring turns green). B sees A's dot. `/sawit share off` removes it at
       once.
-- [ ] **Encoded messages go through.** Sealed messages are binary sent through `LibDeflate:EncodeForWoWAddonChannel`. The
-      old compressed path used the same encoding, but it has never been confirmed on this client's GUILD channel.
-      With `/sawit debug` on, check `tx` lines on A and matching receipts on B.
+- [ ] **Encoded messages go through.** Sealed messages go out as printable text (`LibDeflate:EncodeForPrint`, since
+      2026-11-05; the raw-byte encoding before it was reported unreadable). `/sawit status` should show own messages
+      back from the server as unchanged, and nothing that "failed the seal".
 - [ ] **Wrong secret.** Give B a different secret. Nothing from A appears on B, and B's `/sawit status` shows the
-      "wrong secret" count going up.
+      "failed the seal" count going up.
 - [ ] **No secret.** `/sawit secret clear` on B. B sends nothing (A sees no dot or notes from B), and B's status shows
       "while no secret was set" counts.
 - [ ] **Sync bursts.** With a few dozen notes, `/sawit sync` on a fresh character. Watch for frame hitches while records
@@ -114,7 +132,7 @@ SawIt version.
 
 ## 8. Before sharing the addon
 
-- [ ] `GA.TEST_MODE = false` in `Core/Core.lua`.
+- [x] `GA.TEST_MODE = false` in `Core/Core.lua` (2026-11-05).
 - [ ] Bump `## Version` in `SawIt.toc` and `GA.VERSION` in `Core/Core.lua`.
 - [ ] Replace the placeholder `## X-Curse-Project-ID: 999999` in `SawIt.toc`, or remove it.
 - [ ] Every guildmate on the same version. Older SawIt and standalone GuildAtlas can't talk to this version.

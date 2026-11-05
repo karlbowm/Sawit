@@ -11,7 +11,7 @@ local GA = LibStub("AceAddon-3.0"):NewAddon(ADDON, "AceEvent-3.0", "AceConsole-3
 ns.addon = GA
 _G.SawIt = GA
 
-GA.VERSION = "0.1.0"
+GA.VERSION = "0.2.0"
 
 ---------------------------------------------------------------------------
 -- FEATURE FLAG: test mode without a guild.   true = on, false = off.  /reload after changing.
@@ -22,7 +22,7 @@ GA.VERSION = "0.1.0"
 -- leak into, or mix with, a real guild's notes. A TEST MODE line prints at login and in /sawit status.
 -- All code asks GA:IsTestMode() / GA:InGuild() / GA:CanUseNetwork() below; nothing else reads these two values.
 ---------------------------------------------------------------------------
-GA.TEST_MODE = true
+GA.TEST_MODE = false
 GA.TEST_GUILD_NAME = "AZB Test"
 
 GA.HBDPins = LibStub("HereBeDragons-Pins-2.0")   -- embedded (embeds.xml); draws note pins and guildmate dots
@@ -305,9 +305,30 @@ local function printStatus(self)
     self:Print(check and ("Guild secret: |cff40ff40set|r, check code |cffffffff%s|r (compare with guildmates)"):format(check)
         or "Guild secret: |cffff4040not set|r - nothing is shared or received (/sawit secret)")
     local st = self.Comm.stats
-    if st.unreadable > 0 or st.plaintext > 0 or st.noKey > 0 then
-        self:Print(("Unreadable guild messages: %d wrong secret, %d unencrypted (old SawIt/GuildAtlas), %d while no secret was set")
-            :format(st.unreadable, st.plaintext, st.noKey))
+    self:Print(("Messages: sent %d, received %d%s%s"):format(st.txData, st.rxData,
+        st.sendFail > 0 and (", |cffff4040%d refused by the client|r"):format(st.sendFail) or "",
+        self.Comm:IsLockedDown() and ", |cffff4040addon messaging locked down right now|r" or ""))
+    if st.echoOK > 0 or st.echoChanged > 0 then   -- the server sends our GUILD messages back; Comm compares them
+        self:Print(("Own messages back from the server: %d unchanged, %s"):format(st.echoOK, st.echoChanged > 0
+            and ("|cffff4040%d changed on the way|r"):format(st.echoChanged) or "0 changed"))
+    end
+    if st.notMember > 0 or st.rateLimited > 0 then
+        self:Print(("Ignored: %d from players not in the roster, %d over the rate limit"):format(st.notMember, st.rateLimited))
+    end
+    -- notes made while GA.TEST_MODE was on live under the test guild's key and are never shared
+    local test = not self:IsTestMode() and self.db.global.guilds[self.TEST_GUILD_NAME .. "-" .. GetRealmName()]
+    local testNotes = 0
+    for _, rec in pairs(test and test.pois or {}) do
+        if not rec.deleted then testNotes = testNotes + 1 end
+    end
+    if testNotes > 0 then
+        self:Print(("|cffff8000%d note(s) from test mode|r are stored separately under '%s' and are not shared.")
+            :format(testNotes, self.TEST_GUILD_NAME))
+    end
+    if st.unreadable > 0 or st.plaintext > 0 or st.oldFormat > 0 or st.noKey > 0 then
+        self:Print(("Unreadable guild messages: %d failed the seal (wrong secret, or changed on the way), %d from an "
+            .. "older SawIt (update it), %d unencrypted (GuildAtlas), %d while no secret was set")
+            :format(st.unreadable, st.oldFormat, st.plaintext, st.noKey))
     end
     self:Print("TomTom: " .. (self.IsAddOnLoaded("TomTom") and "installed (Ctrl-click waypoints)" or "not installed (Ctrl-click places WoW's map pin)"))
     self.Positions:PrintStatus()
@@ -327,6 +348,10 @@ function GA:SlashCommand(input)
         local c = self.db.profile.comm
         c.debug = not c.debug
         self:Print("debug", c.debug and "on" or "off")
+        if c.debug then   -- a fresh raw message log (Comm.lua, logMessage); saved to disk on /reload or logout
+            self.db.global.debugLog = nil
+            self:Print("Raw addon messages are logged to SawItDB.global.debugLog (saved on /reload).")
+        end
     elseif cmd == "secret" then
         if arg:lower() == "clear" then
             self:Print(self:ClearGuildSecret() and "Guild secret removed: nothing is shared until one is set again."

@@ -253,7 +253,8 @@ local function sealAs(name, fn)
     return captured[1]
 end
 local msg = sealAs("Bob", function() GA.Comm:Send("T", { "hello", 42 }) end)
-check(msg and msg.prefix == "GAtlasD" and msg.text:sub(1, 1) == "2" and not msg.text:find("hello", 1, true), "data message goes out sealed, text not readable")
+check(msg and msg.prefix == "GAtlasD" and msg.text:sub(1, 1) == "3" and not msg.text:find("hello", 1, true), "data message goes out sealed, text not readable")
+check(not msg.text:find("[^%w%(%)]"), "sealed data message uses printable characters only")
 GA.Comm:OnData("GAtlasD", msg.text, "GUILD", "Bob-Realm")
 check(got and got[1] == "Bob-Realm" and got[2][1] == "hello" and got[2][2] == 42, "guildmate with the same secret: message read")
 local st = GA.Comm.stats
@@ -277,12 +278,53 @@ check(GA:NetContext() == nil and sd.status:GetText():find("not set", 1, true), "
 sd:Hide()
 GA.db.global.netKeys["AZB-Realm"] = key
 local pos = sealAs("Dora", function() GA.Comm:SendRaw(GA.Positions.Encode(1429, 0.5, 0.5)) end)
-check(pos and pos.prefix == "GAtlasP" and pos.text:sub(1, 1) == "E" and #pos.text < 255, "position packet goes out sealed (" .. #pos.text .. " bytes)")
+check(pos and pos.prefix == "GAtlasP" and pos.text:sub(1, 1) == "F" and #pos.text < 255, "position packet goes out sealed (" .. #pos.text .. " bytes)")
 GA.Comm:OnRaw("GAtlasP", pos.text, "GUILD", "Dora")
 check(GA.Positions.players.Dora and GA.Positions.players.Dora.map == 1429, "sealed position from a guildmate shows up")
 GA.Comm:OnRaw("GAtlasP", "10142945216033", "GUILD", "Eve")
 check(GA.Positions.players.Eve == nil, "unencrypted position packet ignored")
 GA.Positions:OnPacket("Dora", "0")
+-- diagnostics: chunks the client refuses are counted; senders missing from a loaded roster are counted
+local sentCb, sentArg
+local sentText
+GA.Comm.SendCommMessage = function(_, _, text, _, _, _, cb, arg) sentText, sentCb, sentArg = text, cb, arg end
+GA.Comm:Send("T", { 1 })
+local fails = st.sendFail
+sentCb(sentArg, 255, 255, true)   -- AceComm passes CTL's didSend flag as the 4th argument
+check(st.sendFail == fails, "successful send not counted as refused")
+sentCb(sentArg, 255, 255, false)
+check(st.sendFail == fails + 1, "refused send counted")
+-- our own GUILD message coming back from the server is compared with what we sent
+local echoOK, echoChanged = st.echoOK, st.echoChanged
+GA.Comm:OnData("GAtlasD", sentText, "GUILD", GA.playerName)
+check(st.echoOK == echoOK + 1 and st.echoChanged == echoChanged, "own message back unchanged: counted as echo ok")
+GA.Comm:OnData("GAtlasD", sentText:sub(1, -2) .. (sentText:sub(-1) == "a" and "b" or "a"), "GUILD", GA.playerName)
+check(st.echoChanged == echoChanged + 1, "own message back with a changed byte: counted as changed")
+local old = st.oldFormat
+GA.Comm:OnData("GAtlasD", "2" .. ("x"):rep(30), "GUILD", "Bob")
+check(st.oldFormat == old + 1, "message in the raw-byte format of older SawIt counted as old format")
+-- raw message log, only while /sawit debug is on
+GA:SlashCommand("debug")
+GA.Comm:Send("T", { 2 })
+got = nil
+GA.Comm:OnData("GAtlasD", msg.text, "GUILD", "Bob-Realm")
+local dlog = GA.db.global.debugLog
+check(dlog and #dlog.data == 2 and dlog.data[1].dir == "tx" and dlog.data[1].hex == GA.Crypto.hex(sentText)
+    and dlog.data[2].dir == "rx" and dlog.data[2].who == "Bob-Realm" and dlog.data[2].why == "ok T"
+    and dlog.data[2].hex == GA.Crypto.hex(msg.text), "debug on: sent and received messages logged as hex with result")
+GA:SlashCommand("debug")
+GA.Comm:Send("T", { 3 })
+check(#GA.db.global.debugLog.data == 2, "debug off: nothing more logged")
+GA:SlashCommand("debug")
+check(GA.db.global.debugLog == nil, "turning debug on starts a fresh log")
+GA:SlashCommand("debug")
+local savedRoster, savedReady = GA.roster, GA.rosterReady
+GA.roster, GA.rosterReady = { Bob = { rank = 3 } }, true
+local nm = st.notMember
+got = nil
+GA.Comm:OnData("GAtlasD", msg.text, "GUILD", "Mallory")
+check(got == nil and st.notMember == nm + 1, "message from a player not in the loaded roster counted as not-in-roster")
+GA.roster, GA.rosterReady = savedRoster, savedReady
 GA.Comm.SendCommMessage = realSendComm
 GA.TEST_MODE = true; ringOwner:UpdateRing()
 check(ringColor() == "orange", "sharing on in test mode: orange ring (local only)")
@@ -411,6 +453,11 @@ local other = GA.POI:Create("not mine", "other", 1429, 0.1, 0.1, "Bob's note")
 GA.POI:Get(other).author = "Bob"   -- as if synced from Bob
 GA:SlashCommand("my")
 check(said("Mother Fang", 1, true) and not said("Bob's note") and said("2 note%(s%) by you"), "/sawit my lists only your notes")
+printed = {}
+GA.db.global.guilds["AZB Test-Realm"] = { pois = { a = { rev = 1 }, b = { rev = 1, deleted = true } } }
+GA:SlashCommand("status")
+check(said("Messages: sent") and said("1 note%(s%) from test mode"), "/sawit status shows counters and unshared test-mode notes")
+GA.db.global.guilds["AZB Test-Realm"] = nil
 printed = {}
 GA:SlashCommand("list")
 check(said("Bob's note") and said("3 note%(s%)"), "/sawit list lists everyone's notes")
